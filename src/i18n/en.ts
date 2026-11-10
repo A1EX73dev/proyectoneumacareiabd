@@ -22,7 +22,7 @@ export const en: Messages = {
 
   'privacy.title': 'Privacy',
   'privacy.body':
-    'No cameras · no recorded audio · simulated data · nothing is stored (everything lives in memory and is wiped on reload).',
+    'No cameras · no recorded audio · simulated data · nothing is stored (everything lives in memory and is wiped on reload). With the AI agent, your orders and the rooms’ ambient state are sent to Google (Gemini), without clinical data.',
   'privacy.redacted': '[patient data deleted]',
 
   'common.on': 'on',
@@ -122,7 +122,7 @@ export const en: Messages = {
   'source.voice': 'Voice / text',
   'source.trigger': 'Scheduled trigger',
   'source.agent': 'Agent',
-  'source.llm': 'LLM',
+  'source.llm': 'AI agent',
   'source.system': 'System',
 
   'protocol.noche': 'Night',
@@ -177,7 +177,7 @@ export const en: Messages = {
   'urgency.alta': 'High',
 
   'planner.mock': 'Policy engine (local)',
-  'planner.llm': 'LLM',
+  'planner.llm': 'AI agent (Gemini)',
 
   'tool.set_temperature': 'Temperature',
   'tool.set_light': 'Light',
@@ -237,7 +237,7 @@ export const en: Messages = {
   'reason.safety': 'Clinical safety: immediate work light, silence and no aroma',
   'reason.voice': 'Voice/text order: “{text}”',
   'reason.clarify': 'The order is unclear: ask for clarification',
-  'reason.llm': 'LLM decision',
+  'reason.llm': 'AI agent, order: “{text}”',
   'reason.confirmation': 'Confirm what was done',
 
   'error.roomNotFound': 'Room {room} does not exist.',
@@ -316,11 +316,16 @@ export const en: Messages = {
 
   'agent.title': 'Agent',
   'agent.planner': 'Agent brain',
-  'agent.soon': 'coming soon',
   'agent.plannerHint':
-    'The agent only acts through functions. If the LLM fails or proposes an invalid call, the local engine is used.',
+    'The agent only acts through validated functions. The AI agent handles voice and text orders; triggers, the clock and alarms are always resolved by the local engine. If the AI fails, the local engine answers.',
   'agent.fallbacks': 'Fallbacks to the local engine: {n}.',
-  'agent.fallback': 'The LLM failed; using the local policy engine',
+  'agent.fallback': 'The AI agent failed; the local policy engine answers',
+  'agent.llmReady': 'connected',
+  'agent.llmUnconfigured': 'no API key',
+  'agent.llmOffline': 'no backend',
+  'agent.llmSetupHint':
+    'To enable the AI agent, create .env.local with GEMINI_API_KEY and restart “npm run dev” (see docs/LLM.md).',
+  'agent.interrupted': 'The AI agent was interrupted: {error}.',
   'agent.lastEvent': 'Last event',
   'agent.noEvent': 'No events yet.',
   'agent.calls': 'Function calls',
@@ -331,7 +336,7 @@ export const en: Messages = {
   'agent.noNotifications': 'No notices.',
   'agent.toolDefs': 'Available functions (JSON Schema)',
   'agent.toolDefsHint':
-    'Generated from the Zod schemas; this is what the LLM will receive as tools.',
+    'Generated from the Zod schemas. The AI agent receives them as tools, except speak and the patient-data ones.',
 
   'agenda.title': 'Trigger schedule',
   'agenda.time': 'Time',
@@ -363,6 +368,12 @@ export const en: Messages = {
   'voice.speak': 'Speak',
   'voice.stop': 'Stop',
   'voice.idle': 'Press “Speak” and say an order in Spanish.',
+  'voice.idleLlm': 'Press “Speak” and ask for what you need in your own words.',
+  'voice.thinking': 'The agent is thinking…',
+  'voice.llmUnavailable':
+    'The AI agent could not answer: {error}. The local engine answered instead.',
+  'voice.brainLlm': 'AI agent',
+  'voice.brainMock': 'Local engine',
   'voice.listening': 'Listening…',
   'voice.unsupported':
     'Microphone not available in this browser: use the text box (same interpreter).',
@@ -376,6 +387,8 @@ export const en: Messages = {
   'voice.examples': 'Example orders',
   'voice.examplesNote':
     'Orders are interpreted in Spanish. If no room is given, the open room is used.',
+  'voice.examplesNoteLlm':
+    'The AI agent understands natural language. If no room is given, it uses the open one or asks.',
   'voice.conversation': 'Conversation with the agent',
   'voice.empty': 'Your orders and the agent’s replies will appear here.',
   'voice.you': 'You',
@@ -404,8 +417,12 @@ export const en: Messages = {
   'reply.done': 'Done: {action}.',
   'reply.many': 'Done: {count} actions applied.',
 
-  'llm.notConfigured':
-    'LLM not configured: connect your own backend (see docs/LLM.md). No network call is made.',
-  'llm.deterministicOnly': 'Safety events are never delegated to the LLM.',
-  'llm.invalidCall': 'The LLM proposed an invalid call ({name}): {error}',
+  'llm.notConfigured': 'AI agent not configured: the backend URL is missing (see docs/LLM.md).',
+  'llm.deterministicOnly':
+    'The AI agent only handles voice or text orders; everything else is resolved by the local engine.',
+  'llm.unreachable': 'the agent backend could not be reached',
+  'llm.backendError': 'the agent backend answered {status}: {detail}',
+  'llm.refused': 'the model declined the request',
+  'llm.truncated': 'the model response was cut off',
+  'llm.tooManySteps': 'too many steps for a single order',
 };

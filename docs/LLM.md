@@ -1,177 +1,138 @@
-# Conectar un LLM a NeumaCare
+# El agente de IA de NeumaCare
 
-Hoy el agente usa el **MockPlanner**, un motor de políticas determinista y local. La arquitectura ya está lista para sustituirlo por un LLM sin tocar la UI ni las funciones del agente. Esta guía explica cómo hacerlo **sin exponer nunca la API key en el navegador**.
+Las órdenes de voz y de texto las atiende un agente con **Gemini** (Google) que gestiona las habitaciones **llamando a las funciones del agente** (`src/core/tools/`). Esta guía explica cómo activarlo, cómo funciona y qué hay que cuidar al desplegarlo.
 
-> En esta fase no se hace ninguna llamada de red. `AnthropicProvider.complete()` siempre rechaza con `LlmNotConfiguredError` y el agente cae al MockPlanner.
+## 1. Activarlo en local
 
-## 1. Qué hay ya en el código
+1. Crea una API key en [Google AI Studio](https://aistudio.google.com/apikey).
+2. Cópiala en `.env.local`:
 
-| Pieza                      | Archivo                       | Qué hace                                                                                                                            |
-| -------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| Registro de funciones      | `src/core/tools/index.ts`     | Cada función se define una vez con Zod. `toToolDefinitions()` genera `[{ name, description, input_schema }]` (formato Anthropic).   |
-| `runTool(call)`            | `src/core/tools/index.ts`     | Valida con Zod → recorta rangos → comprueba prioridades → ejecuta → registra. Nunca lanza.                                          |
-| `interface LlmProvider`    | `src/core/llm/types.ts`       | `complete({ system, messages, tools }) → { toolCalls, text? }`                                                                      |
-| `AnthropicProvider` (stub) | `src/core/llm/anthropic.ts`   | Rechaza con "no configurado". Incluye `parseMessagesResponse()`, que ya convierte bloques `text`/`tool_use` en `ToolCall[]`.        |
-| `LlmPlanner`               | `src/core/planners/llm.ts`    | Construye el prompt del sistema y el contexto, llama al proveedor, valida cada llamada con Zod y le asigna la prioridad del evento. |
-| Caída al Mock              | `src/core/agent.ts`           | `planWithFallback()`: si el LLM lanza o propone una llamada inválida, se descarta su plan, se usa el MockPlanner y se registra.     |
-| Selector de planner        | `src/ui/agent/AgentPanel.tsx` | La opción LLM está deshabilitada mientras `LLM_AVAILABLE = false` (`src/core/runtime.ts`).                                          |
+   ```bash
+   cp .env.example .env.local   # escribe tu GEMINI_API_KEY
+   npm run dev
+   ```
 
-Garantías que no dependen del LLM:
+- La clave **solo** la lee el servidor de Vite (`server/vitePlugin.ts`). No lleva el prefijo `VITE_`, así que nunca entra en el bundle, y `.env.local` está en `.gitignore`. También vale `GOOGLE_API_KEY`.
+- Al arrancar, la interfaz hace `GET /api/agent`. Si hay clave, el agente de IA queda seleccionado en _Agente → Cerebro del agente_ con la etiqueta «conectado». Si no, se muestra «sin API key» y el chat lo atiende el intérprete local.
+- Opcional: `NEUMACARE_MODEL` en `.env.local` cambia el modelo (por defecto `gemini-3.8-flash`). Por ejemplo, `gemini-3.5-flash-lite` es más rápido y barato, y `gemini-4-argon` razona más a cambio de latencia.
+- Opcional: `NEUMACARE_FALLBACK_MODELS` (lista separada por comas) fija los modelos de respaldo; por defecto `gemini-3.6-flash,gemini-3.5-flash-lite`. Ver «Modelos saturados» más abajo.
 
-- **La prioridad la decide el evento, no el modelo.** Una orden de voz es prioridad 2, un disparador de comida es 3, etc. (`priorityForEvent`). El LLM no puede escalar a "seguridad".
-- **Los eventos de seguridad nunca se delegan** (`isDeterministicOnly`): una alarma clínica siempre la resuelve el motor local.
-- **Todo pasa por `runTool`**: rangos, rangos por categoría, bloqueo de aroma por alergia y jerarquía de prioridades se aplican igual con o sin LLM.
-- **Sin datos clínicos en el prompt**: `buildContextSummary()` envía categoría, protocolo y valores, nunca el formulario del paciente.
-
-## 2. Arquitectura propuesta
+## 2. Arquitectura
 
 ```
-Navegador (Vite/React)                Backend propio (serverless)             Anthropic
-──────────────────────                ───────────────────────────             ─────────
-LlmPlanner
-  └─ AnthropicProvider.complete() ──► POST /api/agent ──────────────────────► Messages API
-       { system, messages, tools }      · comprueba sesión/origen               (tool use)
-                                        · añade la API key (variable de entorno)
-     ◄── cuerpo de la respuesta ◄────── · reenvía y devuelve la respuesta ◄───
-  parseMessagesResponse() → ToolCall[]
-  → validación Zod → runTool()
+Navegador (Vite/React)                      Backend propio                       Google
+──────────────────────                      ──────────────                       ──────
+VoicePanel (voz o texto)
+  └─ agent.handle(evento 'voice')
+       └─ LlmPlanner.converse()  ◄─┐
+            │ provider.complete()  │
+            ├──────────────────────┼──► POST /api/agent ─────────────────────► Gemini API
+            │ { system, messages,  │      · comprueba origen, tamaño y forma     generateContent
+            │   tools }            │      · traduce al formato de Gemini         (function calling)
+            │ ◄────────────────────┼───── · añade la API key y fija el modelo ◄──
+            │ tool_use → runTool() │
+            └─ tool_result ────────┘  (se repite hasta que el modelo responde con texto)
 ```
 
-La API key **solo** vive en el backend (variable de entorno del proveedor serverless). El cliente nunca la ve, ni en el bundle ni en las peticiones.
+El estado de la planta vive en memoria en el navegador, así que **las funciones se ejecutan en el cliente** y el backend es un proxy que traduce formatos. El bucle es el habitual del function calling: el modelo propone llamadas, el cliente las ejecuta y devuelve todos los resultados juntos, y se repite mientras el modelo pida funciones (máximo `MAX_AGENT_STEPS` vueltas).
 
-## 3. Backend: función serverless (TypeScript, Node)
+El navegador no conoce el formato de Gemini: habla con el backend con mensajes de bloques `text`, `tool_use` y `tool_result`. `server/geminiFormat.ts` hace la traducción en los dos sentidos:
 
-Instala el SDK oficial **en el proyecto del backend**, no en el cliente:
+| Navegador                         | Gemini                                                                  |
+| --------------------------------- | ----------------------------------------------------------------------- |
+| `system`                          | `config.systemInstruction`                                              |
+| `tools[].input_schema`            | `functionDeclarations[].parametersJsonSchema` (JSON Schema estándar)    |
+| turno `assistant`                 | contenido `model`: se reenvían **las `parts` originales sin modificar** |
+| bloque `tool_use`                 | part `functionCall` (el id se genera si Gemini no lo da)                |
+| bloques `tool_result` de un turno | un solo contenido `user` con una part `functionResponse` por llamada    |
+| `stop_reason`                     | `finishReason` y `promptFeedback.blockReason`                           |
 
-```bash
-npm install @anthropic-ai/sdk
-```
+| Pieza                 | Archivo                    | Qué hace                                                                                                                         |
+| --------------------- | -------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Registro de funciones | `src/core/tools/index.ts`  | Cada función se define una vez con Zod. `toToolDefinitions()` genera `[{ name, description, input_schema }]`.                    |
+| `runTool(call)`       | `src/core/tools/index.ts`  | Valida con Zod → recorta rangos → comprueba prioridades → ejecuta → registra. Nunca lanza.                                       |
+| `LlmPlanner`          | `src/core/planners/llm.ts` | Prompt del sistema, contexto, bucle modelo → funciones → modelo. Asigna a cada llamada la prioridad del evento.                  |
+| `BackendProvider`     | `src/core/llm/backend.ts`  | `fetch` al backend propio; comprueba `stop_reason` y conserva el `content` original para reenviarlo sin tocar.                   |
+| Bucle del agente      | `src/core/agent.ts`        | Decide quién atiende cada evento, serializa las órdenes a la IA, gestiona la caída al motor local y dice la respuesta (`speak`). |
+| Backend               | `server/agentProxy.ts`     | Guarda la clave, valida la petición, fija modelo y parámetros y llama a Gemini con el SDK oficial (`@google/genai`).             |
+| Traducción            | `server/geminiFormat.ts`   | Convierte mensajes y herramientas al formato de Gemini y la respuesta de vuelta.                                                 |
+| Montaje en Vite       | `server/vitePlugin.ts`     | Sirve `/api/agent` en `npm run dev` y `npm run preview`.                                                                         |
 
-Ejemplo de handler (formato Web `Request`/`Response`, válido en Vercel, Netlify Functions, Cloudflare Workers con `nodejs_compat`, etc.):
+### Qué recibe el modelo
+
+- **Instrucción del sistema** (`buildSystemPrompt()`): fija entre peticiones.
+- **Un mensaje por orden** con `{ orden, contexto }`. El contexto (`buildContextSummary()`) lleva hora simulada, idioma, habitación abierta, estado ambiental de las diez habitaciones, agenda de disparadores y los últimos mensajes de la conversación (por eso entiende «y ahora un poco menos»).
+- **Herramientas**: todas las funciones salvo `speak` (su respuesta final ya se dice y se muestra), `classify_patient` y `clear_patient` (ver `LLM_EXCLUDED_TOOLS`).
+
+### Garantías que no dependen del modelo
+
+- **La prioridad la decide el evento, no el modelo.** Una orden de voz o texto es prioridad 2 (`priorityForEvent`). El modelo no puede escalar a «seguridad».
+- **Solo las órdenes de voz o texto llegan a la IA** (`isLlmEvent`). Disparadores, cambios de fase, ruido y alarmas clínicas los resuelve siempre el motor local: son frecuentes, deben ser instantáneos y reproducibles, y no pueden depender de la red.
+- **Todo pasa por `runTool`**: rangos, rangos por categoría, bloqueo de aroma por alergia y jerarquía de prioridades se aplican igual con o sin IA. Un rechazo vuelve al modelo como resultado de error, y el modelo lo explica.
+- **Sin datos clínicos**: el contexto lleva categoría, protocolo y valores, nunca el formulario del paciente; `get_room_state` tampoco lo devuelve, y el modelo no puede clasificar ni borrar pacientes.
+- **Caída al motor local**: si la IA falla antes de ejecutar nada (sin clave, sin red, error de la API, bloqueo de seguridad), responde el intérprete local y queda registrado como `planner_fallback`. Si falla a mitad de turno no se repite nada: el agente cuenta lo que sí hizo y por qué se paró.
+
+## 3. El backend (`server/agentProxy.ts`)
+
+`createAgentProxy()` devuelve una función `(ProxyRequest) → ProxyResponse` sobre datos planos, sin depender de ningún framework. La petición a Gemini es:
 
 ```ts
-// api/agent.ts — se ejecuta en el servidor; ANTHROPIC_API_KEY es una variable de entorno.
-import Anthropic from '@anthropic-ai/sdk';
-
-const client = new Anthropic(); // lee ANTHROPIC_API_KEY del entorno
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN ?? 'https://tu-dominio.example';
-const MAX_BODY_BYTES = 200_000;
-
-export default async function handler(req: Request): Promise<Response> {
-  if (req.method !== 'POST') return new Response('Method not allowed', { status: 405 });
-  if (req.headers.get('origin') !== ALLOWED_ORIGIN)
-    return new Response('Forbidden', { status: 403 });
-  // Aquí también: autenticación del personal y límite de peticiones por usuario.
-
-  const raw = await req.text();
-  if (raw.length > MAX_BODY_BYTES) return new Response('Payload too large', { status: 413 });
-
-  let body: { system?: unknown; messages?: unknown; tools?: unknown };
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return new Response('Bad JSON', { status: 400 });
-  }
-  if (
-    typeof body.system !== 'string' ||
-    !Array.isArray(body.messages) ||
-    !Array.isArray(body.tools)
-  ) {
-    return new Response('Bad request', { status: 400 });
-  }
-
-  try {
-    const response = await client.beta.messages.create({
-      model: 'claude-opus-5-5',
-      max_tokens: 16000,
-      system: body.system,
-      messages: body.messages as Anthropic.Beta.BetaMessageParam[],
-      tools: body.tools as Anthropic.Beta.BetaTool[],
-      tool_choice: { type: 'auto' },
-      output_config: { effort: 'low' }, // decisiones cortas y frecuentes; súbelo si hace falta más criterio
-      // Si un clasificador de seguridad rechaza la petición, la API la reintenta en otro modelo.
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-    });
-    return Response.json(response);
-  } catch (error) {
-    if (error instanceof Anthropic.RateLimitError)
-      return new Response('Rate limited', { status: 429 });
-    if (error instanceof Anthropic.APIError) return new Response('Upstream error', { status: 502 });
-    return new Response('Internal error', { status: 500 });
-  }
-}
+ai.models.generateContent({
+  model: 'gemini-3.8-flash',
+  contents: toGeminiContents(body.messages),
+  config: {
+    systemInstruction: body.system,
+    tools: [{ functionDeclarations: toFunctionDeclarations(body.tools) }],
+    toolConfig: { functionCallingConfig: { mode: FunctionCallingConfigMode.AUTO } },
+    maxOutputTokens: 8192,
+    thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+  },
+});
 ```
 
 Notas sobre el modelo y los parámetros:
 
-- **Modelo**: `claude-opus-5-5`. Usa el identificador tal cual, sin sufijo de fecha.
-- **`tool_choice`**: usa `auto`. En este modelo el uso forzado (`any` o `tool`) devuelve un 400. El prompt del sistema ya indica que solo debe actuar mediante funciones.
-- **Razonamiento**: en este modelo siempre está activo. No envíes `thinking: { type: 'disabled' }` ni `budget_tokens` (ambos dan 400). La profundidad se controla con `output_config.effort` (`low`, `medium`, `high`, `xhigh` o `max`; por defecto `medium`).
-- **Rechazos**: comprueba siempre `stop_reason` antes de leer `content`. Si vale `"refusal"`, el cliente debe tratarlo como un fallo, y el agente caerá al MockPlanner. El ejemplo incluye `fallbacks: 'default'` para que la API reintente en otro modelo; quítalo si no lo quieres.
-- **Sin `temperature`/`top_p`/`top_k`**: no se admiten en este modelo.
+- **Modo `AUTO`**: el modelo decide si llama a funciones o responde con texto (así puede preguntar cuando falta un dato).
+- **Razonamiento**: los modelos Gemini 3 y 4 razonan siempre; `thinkingLevel: LOW` prima la latencia, porque son órdenes cortas. Súbelo a `MEDIUM` si quieres más criterio en peticiones abiertas. Con modelos 2.5 no se envía (usan `thinkingBudget`).
+- **`maxOutputTokens` incluye el razonamiento**: con un límite bajo la respuesta se cortaría.
+- **Firmas de razonamiento (`thoughtSignature`)**: Gemini 3 y 4 las adjuntan a las llamadas a funciones y **exigen** recibirlas de vuelta, o la petición falla con un 400. Por eso el backend devuelve las `parts` originales en un bloque `gemini_content`, el cliente lo guarda tal cual y el backend lo reenvía sin modificar. El historial solo crece: no se editan ni reordenan turnos anteriores.
+- **Resultados de funciones**: todos los de un turno van en un solo contenido `user`, en el mismo orden que las llamadas (intercalarlos da un 400).
+- **Bloqueos**: si `promptFeedback.blockReason` está presente, o `finishReason` es `SAFETY`, `PROHIBITED_CONTENT`, `BLOCKLIST`, `SPII` o `RECITATION`, el backend responde `stop_reason: "refusal"` y el cliente lo trata como fallo. `MALFORMED_FUNCTION_CALL` se devuelve como error 502.
+- **Modelos saturados**: los modelos más nuevos de Gemini responden a menudo `503 UNAVAILABLE` («This model is currently experiencing high demand»). El backend no espera ni reintenta el mismo modelo: pasa al siguiente de la cadena (`NEUMACARE_MODEL` y después `NEUMACARE_FALLBACK_MODELS`) y aparta el saturado durante 60 s. Lo mismo con 429 (cuota del modelo agotada), 404 (modelo no disponible para tu clave) y errores 5xx; un 400 no se reintenta, porque fallaría igual en cualquier modelo. Cada cambio queda anotado en la consola del servidor como `[agente] …`, sin datos de la petición. Si todos fallan, la interfaz muestra qué modelos se han probado y el último error de Gemini, y responde el motor local.
+- **Un turno, un modelo**: las firmas de razonamiento solo valen para el modelo que las generó. Por eso, mientras dura una orden, el backend sigue con el modelo que la empezó (lo guarda en el bloque `gemini_content`). Si ese modelo deja de estar disponible a mitad, el turno sigue en otro y las firmas anteriores se sustituyen por la firma comodín que documenta Google (`skip_thought_signature_validator`).
 
-## 4. Cliente: implementar `AnthropicProvider.complete()`
+Protecciones del proxy: solo acepta `POST` con `Content-Type: application/json` desde el mismo origen (otra web no puede gastar tu clave), limita el tamaño del cuerpo y el número de mensajes y herramientas, ignora cualquier parámetro del cliente que no sea `system`, `messages` y `tools`, limita a 40 peticiones por minuto y no registra el cuerpo de las peticiones.
 
-Sustituye el stub por una llamada a **tu** endpoint (nunca a `api.anthropic.com` desde el navegador):
+## 4. Desplegarlo fuera de Vite
+
+`npm run build` genera un sitio estático: sin backend, la interfaz muestra «sin backend» y sigue con el motor local. Para tener el agente de IA en producción, sirve `/api/agent` con el mismo handler. Ejemplo con el formato Web `Request`/`Response` (Vercel, Netlify Functions, Cloudflare Workers con `nodejs_compat`…):
 
 ```ts
-// src/core/llm/anthropic.ts
-complete(req: LlmRequest): Promise<LlmResponse> {
-  const endpoint = this.options.endpoint;
-  if (!endpoint) return Promise.reject(new LlmNotConfiguredError());
-  return fetch(endpoint, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    credentials: 'include', // sesión del personal, si la hay
-    body: JSON.stringify(req),
-  })
-    .then(async (res) => {
-      if (!res.ok) throw new Error(`Backend LLM respondió ${res.status}`);
-      const body = (await res.json()) as { stop_reason?: string };
-      if (body.stop_reason === 'refusal') throw new Error('El modelo rechazó la petición');
-      return AnthropicProvider.parseMessagesResponse(body);
-    });
+// api/agent.ts — GEMINI_API_KEY es una variable de entorno del proveedor.
+import { createAgentProxy } from '../server/agentProxy';
+
+const handle = createAgentProxy({ allowedOrigins: ['https://tu-dominio.example'] });
+
+export default async function handler(req: Request): Promise<Response> {
+  const out = await handle({
+    method: req.method,
+    origin: req.headers.get('origin') ?? undefined,
+    host: req.headers.get('host') ?? undefined,
+    contentType: req.headers.get('content-type') ?? undefined,
+    body: req.method === 'POST' ? await req.text() : '',
+  });
+  return Response.json(out.body, { status: out.status });
 }
 ```
 
-Y en `src/core/runtime.ts`:
+Si el backend vive en otro dominio, cambia `LLM_ENDPOINT` en `src/core/runtime.ts` y configura CORS en el handler.
 
-```ts
-export const llmPlanner = new LlmPlanner(new AnthropicProvider({ endpoint: '/api/agent' }));
-export const LLM_AVAILABLE = true; // habilita la opción en el selector de la UI
-```
+## 5. Lista de comprobación de seguridad y privacidad
 
-Cualquier error (red, 4xx/5xx, rechazo o llamada inválida) hace que `planWithFallback()` use el MockPlanner y lo deje registrado como `planner_fallback` en el panel del agente.
-
-## 5. ¿Hace falta un bucle con `tool_result`?
-
-En el diseño actual, **no**: cada evento produce una única petición. El modelo propone llamadas a funciones, el cliente las valida y ejecuta con `runTool`, y el resultado queda en el registro. Es suficiente para órdenes de voz y disparadores, y mantiene el coste y la latencia bajos.
-
-Si más adelante quieres que el modelo **vea los resultados** antes de decidir (por ejemplo, consultar `get_room_state` y luego actuar), convierte el planner en un bucle acotado:
-
-1. Tras ejecutar las llamadas, añade a `messages` el turno del asistente **con su `content` completo y sin modificar** (incluidos los bloques `thinking`). Después añade un turno `user` que contenga **todos** los resultados en un solo mensaje:
-   ```ts
-   messages.push({ role: 'assistant', content: response.content });
-   messages.push({
-     role: 'user',
-     content: results.map((r, i) => ({
-       type: 'tool_result',
-       tool_use_id: toolUses[i].id,
-       content: JSON.stringify(r.ok ? r.result : { error: r.error }),
-       is_error: !r.ok,
-     })),
-   });
-   ```
-2. Repite mientras `stop_reason === 'tool_use'`, con un máximo de vueltas (p. ej. 4).
-3. No edites ni reordenes turnos anteriores: el historial debe ser solo de añadir.
-
-Para esto, el backend debe aceptar `messages` con contenido estructurado (ya lo hace: los reenvía tal cual), y `LlmResponse` debería exponer el `content` original además de `toolCalls`.
-
-## 6. Lista de comprobación de seguridad y privacidad
-
-- [ ] La API key solo existe como variable de entorno del backend.
-- [ ] El backend valida el origen, autentica al personal y limita la frecuencia de peticiones.
-- [ ] No se registran en el backend cuerpos de petición con datos de pacientes (el contexto ya excluye el formulario, pero conviene no guardar logs del cuerpo).
-- [ ] La clasificación de pacientes sigue siendo la función `classify_patient`. El LLM puede invocarla, pero el resultado lo calcula siempre el clasificador determinista.
-- [ ] Las pruebas `src/core/__tests__/planner.test.ts` siguen pasando: caída al Mock, prioridad del evento y seguridad nunca delegada.
+- [ ] La API key solo existe como variable de entorno del backend (nunca con prefijo `VITE_`).
+- [ ] En producción, el backend **autentica al personal** antes de aceptar peticiones. El proxy incluido solo comprueba el origen y limita la frecuencia: es suficiente para desarrollo local, no para un despliegue público.
+- [ ] Con el **nivel gratuito** de la API de Gemini, Google puede usar el contenido enviado para mejorar sus productos. Para datos reales, usa un proyecto con facturación activada y revisa sus condiciones de uso de datos.
+- [ ] No se registran en el backend cuerpos de petición (llevan el estado de las habitaciones y lo que escribe el usuario).
+- [ ] El aviso de privacidad de la interfaz informa de que, con el agente de IA, las órdenes y el estado ambiental se envían a Google.
+- [ ] La clasificación de pacientes sigue siendo determinista y manual: el modelo no recibe `classify_patient` ni `clear_patient`.
+- [ ] Las pruebas `src/core/__tests__/planner.test.ts` y `server/agentProxy.test.ts` siguen pasando.

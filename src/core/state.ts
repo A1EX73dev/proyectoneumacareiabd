@@ -39,8 +39,16 @@ export interface UiSlice {
   lang: Lang;
 }
 
+/** Estado del backend del agente de IA, según la comprobación al arrancar. */
+export type LlmStatus = 'unknown' | 'ready' | 'unconfigured' | 'offline';
+
 export interface AgentSlice {
   plannerKind: PlannerKind;
+  /** Órdenes que el agente de IA está atendiendo ahora mismo. */
+  pending: number;
+  llmStatus: LlmStatus;
+  /** Motivo de la última caída al motor local (null si la última orden fue bien). */
+  llmError: string | null;
   lastEvent: AgentEvent | null;
   calls: CallRecord[];
   notifications: StaffNotification[];
@@ -152,6 +160,9 @@ export function createInitialState(opts: InitialStateOptions = {}): AppState {
     ui: { view: 'map', selectedRoom: null, lang: 'es' },
     agent: {
       plannerKind: 'mock',
+      pending: 0,
+      llmStatus: 'unknown',
+      llmError: null,
       lastEvent: null,
       calls: [],
       notifications: [],
@@ -351,7 +362,11 @@ export function setView(state: AppState, view: 'map' | 'room', room?: string | n
 }
 
 export function setPlannerKind(state: AppState, plannerKind: PlannerKind): AppState {
-  return { ...state, agent: { ...state.agent, plannerKind } };
+  return { ...state, agent: { ...state.agent, plannerKind, llmError: null } };
+}
+
+export function setLlmStatus(state: AppState, llmStatus: LlmStatus): AppState {
+  return { ...state, agent: { ...state.agent, llmStatus } };
 }
 
 export function setLanguage(state: AppState, lang: Lang): AppState {

@@ -1,6 +1,6 @@
 import { createAgent, type Agent } from '../agent';
-import { AnthropicProvider } from '../llm';
-import { LlmPlanner, MockPlanner, type Planner } from '../planners';
+import { BackendProvider } from '../llm';
+import { LlmPlanner, MockPlanner, type ConversationalPlanner } from '../planners';
 import {
   createAppStore,
   createInitialState,
@@ -19,11 +19,11 @@ export function testStore(opts: InitialStateOptions = {}): AppStore {
   return createAppStore(createInitialState({ seedPatients: true, triggers: [], ...opts }));
 }
 
-export function testAgent(store: AppStore, llm?: Planner): Agent {
+export function testAgent(store: AppStore, llm?: ConversationalPlanner): Agent {
   return createAgent({
     store,
     mock: new MockPlanner(),
-    llm: llm ?? new LlmPlanner(new AnthropicProvider()),
+    llm: llm ?? new LlmPlanner(new BackendProvider()),
   });
 }
 

@@ -1,6 +1,7 @@
 import { t, tk } from '../i18n';
 import { newId } from './ids';
-import type { Planner } from './planners/types';
+import { isLlmEvent } from './policy/engine';
+import type { ConversationalPlanner, Planner } from './planners/types';
 import { pushCall, pushUserUtterance, type AppState, type AppStore } from './state';
 import { runTool } from './tools';
 import {
@@ -13,8 +14,13 @@ import {
 } from './types';
 
 /**
- * Bucle del agente: evento → planner (Mock o LLM con caída al Mock) → llamadas a funciones
- * → ejecución con `runTool` → confirmación. Es la única puerta del agente al estado.
+ * Bucle del agente: evento → llamadas a funciones → ejecución con `runTool` → confirmación.
+ * Es la única puerta del agente al estado.
+ *
+ * - Las órdenes de voz o texto las atiende el agente de IA (si está seleccionado), que
+ *   ejecuta funciones y ve sus resultados. Si falla antes de actuar, responde el motor local.
+ * - El resto de eventos (disparadores, reloj, ruido, alarmas) los planifica siempre el
+ *   motor de políticas local, determinista.
  */
 
 export interface AgentRun {
@@ -33,8 +39,11 @@ export interface Agent {
 export interface AgentOptions {
   store: AppStore;
   mock: Planner;
-  llm: Planner;
+  llm: ConversationalPlanner;
 }
+
+/** Longitud máxima que admite la función `speak`. */
+const SPEAK_MAX_CHARS = 500;
 
 export function makeEvent(
   kind: AgentEventKind,
@@ -42,21 +51,6 @@ export function makeEvent(
   at: number,
 ): AgentEvent {
   return { id: newId(`ev-${kind}`), kind, payload, at };
-}
-
-/** Intenta el planner principal; si lanza o devuelve algo inválido, usa el de respaldo. */
-export async function planWithFallback(
-  primary: Planner,
-  fallback: Planner,
-  ctx: Parameters<Planner['plan']>[0],
-  onFallback: (error: Error) => void,
-): Promise<{ calls: ToolCall[]; fellBack: boolean }> {
-  try {
-    return { calls: await primary.plan(ctx), fellBack: false };
-  } catch (e) {
-    onFallback(e instanceof Error ? e : new Error(String(e)));
-    return { calls: await fallback.plan(ctx), fellBack: true };
-  }
 }
 
 function roomValues(state: AppState, roomId: unknown) {
@@ -134,6 +128,52 @@ export function composeReply(
 }
 
 export function createAgent({ store, mock, llm }: AgentOptions): Agent {
+  // Las órdenes al agente de IA se atienden de una en una: cada una ve la respuesta anterior.
+  let llmQueue: Promise<void> = Promise.resolve();
+  function inOrder<T>(task: () => Promise<T>): Promise<T> {
+    const run = llmQueue.then(task);
+    llmQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
+  function setPending(delta: number): void {
+    store.setState((s) => ({
+      ...s,
+      agent: { ...s.agent, pending: Math.max(0, s.agent.pending + delta) },
+    }));
+  }
+
+  function recordFallback(event: AgentEvent, error: Error): void {
+    store.setState((s) => {
+      const next = pushCall(s, {
+        id: newId('call'),
+        atMin: s.clock.nowMin,
+        call: {
+          id: newId('fb'),
+          name: 'planner_fallback',
+          args: { from: 'llm', to: 'mock', event: event.kind },
+          eventId: event.id,
+          source: 'system',
+          reason: t('agent.fallback'),
+        },
+        result: { ok: false, error: error.message },
+      });
+      return {
+        ...next,
+        agent: { ...next.agent, fallbacks: next.agent.fallbacks + 1, llmError: error.message },
+      };
+    });
+  }
+
+  async function planLocally(event: AgentEvent) {
+    const state = store.getState();
+    const calls = await mock.plan({ event, state, nowMin: state.clock.nowMin });
+    return { calls, results: calls.map((call) => runTool(call, store)) };
+  }
+
   const agent: Agent = {
     async handle(event) {
       store.setState((s) => {
@@ -143,51 +183,56 @@ export function createAgent({ store, mock, llm }: AgentOptions): Agent {
           : next;
       });
 
-      const state = store.getState();
-      const ctx = { event, state, nowMin: state.clock.nowMin };
-      let planner: PlannerKind = state.agent.plannerKind;
+      let planner: PlannerKind = 'mock';
       let calls: ToolCall[];
+      let results: ToolResult[];
+      let reply: string | null = null;
       let fellBack = false;
 
-      if (planner === 'llm') {
-        const planned = await planWithFallback(llm, mock, ctx, (error) => {
-          store.setState((s) => {
-            const next = pushCall(s, {
-              id: newId('call'),
-              atMin: s.clock.nowMin,
-              call: {
-                id: newId('fb'),
-                name: 'planner_fallback',
-                args: { from: 'llm', to: 'mock', event: event.kind },
-                eventId: event.id,
-                source: 'system',
-                reason: t('agent.fallback'),
-              },
-              result: { ok: false, error: error.message },
-            });
-            return { ...next, agent: { ...next.agent, fallbacks: next.agent.fallbacks + 1 } };
+      if (store.getState().agent.plannerKind === 'llm' && isLlmEvent(event)) {
+        setPending(1);
+        try {
+          const turn = await inOrder(() => {
+            const state = store.getState();
+            return llm.converse({ event, state, nowMin: state.clock.nowMin }, (call) =>
+              runTool(call, store),
+            );
           });
-        });
-        calls = planned.calls;
-        fellBack = planned.fellBack;
-        if (fellBack) planner = 'mock';
+          planner = 'llm';
+          ({ calls, results } = turn);
+          reply = turn.reply;
+          if (turn.error) {
+            // Se quedó a medias: se cuenta lo que sí se hizo y por qué se ha parado.
+            reply = [
+              composeReply(store.getState(), calls, results),
+              t('agent.interrupted', { error: turn.error.message }),
+            ]
+              .filter(Boolean)
+              .join(' ');
+          }
+          store.setState((s) => ({ ...s, agent: { ...s.agent, llmError: null } }));
+        } catch (e) {
+          // Falló sin haber ejecutado nada: responde el motor local y queda registrado.
+          recordFallback(event, e instanceof Error ? e : new Error(String(e)));
+          fellBack = true;
+          ({ calls, results } = await planLocally(event));
+        } finally {
+          setPending(-1);
+        }
       } else {
-        calls = await mock.plan(ctx);
+        ({ calls, results } = await planLocally(event));
       }
 
-      const results = calls.map((call) => runTool(call, store));
-
-      let reply: string | null = null;
       if (event.kind === 'voice') {
-        reply = composeReply(store.getState(), calls, results);
+        reply ??= composeReply(store.getState(), calls, results);
         if (reply) {
           runTool(
             {
               id: newId('say'),
               name: 'speak',
-              args: { text: reply },
+              args: { text: reply.slice(0, SPEAK_MAX_CHARS) },
               priority: PRIORITY.MANUAL,
-              source: 'agent',
+              source: planner === 'llm' ? 'llm' : 'agent',
               eventId: event.id,
               reason: t('reason.confirmation'),
             },

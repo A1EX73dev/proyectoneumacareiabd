@@ -1,14 +1,16 @@
 import { makeEvent, type AgentRun } from '../core/agent';
 import { newId } from '../core/ids';
 import { TRIGGER_PROFILES } from '../core/policy/triggerProfiles';
-import { agent, engine } from '../core/runtime';
+import { agent, engine, LLM_ENDPOINT } from '../core/runtime';
 import {
   appStore,
   setLanguage,
+  setLlmStatus,
   setPlannerKind,
   setSpeed,
   setView,
   simulateNoiseSpike,
+  type LlmStatus,
 } from '../core/state';
 import { runTool } from '../core/tools';
 import {
@@ -70,6 +72,29 @@ export function changeLang(lang: Lang): void {
 
 export function changePlanner(kind: PlannerKind): void {
   appStore.setState((s) => setPlannerKind(s, kind));
+}
+
+/**
+ * Pregunta al backend si el agente de IA está disponible. Si lo está, pasa a ser el
+ * cerebro por defecto; si no, la aplicación sigue con el motor local.
+ */
+export async function checkLlmBackend(): Promise<void> {
+  let status: LlmStatus = 'offline';
+  try {
+    const res = await fetch(LLM_ENDPOINT, { headers: { Accept: 'application/json' } });
+    if (res.ok) {
+      const info = (await res.json()) as { configured?: boolean };
+      status = info.configured ? 'ready' : 'unconfigured';
+    }
+  } catch {
+    /* sin backend (p. ej. un despliegue estático): se queda el motor local */
+  }
+  appStore.setState((s) => {
+    const next = setLlmStatus(s, status);
+    return status === 'ready' && s.agent.llmStatus === 'unknown'
+      ? setPlannerKind(next, 'llm')
+      : next;
+  });
 }
 
 export function jumpTo(hhmm: string): Promise<void> {

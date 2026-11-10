@@ -1,8 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { agentApi } from './server/vitePlugin';
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), agentApi()],
   build: {
     // three.js ocupa ~600 kB por sí solo; se separa en su propio chunk y se carga en diferido.
     chunkSizeWarningLimit: 1600,
@@ -17,6 +18,6 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'server/**/*.test.ts'],
   },
 });

@@ -71,7 +71,8 @@ export function applyEnvChange(
 
   const autoDisabled =
     ctx.priority === PRIORITY.MANUAL &&
-    (ctx.source === 'manual' || ctx.source === 'voice') &&
+    // 'llm' con prioridad manual es una orden de voz/texto atendida por el agente de IA.
+    (ctx.source === 'manual' || ctx.source === 'voice' || ctx.source === 'llm') &&
     room.auto;
   const instant = ctx.priority === PRIORITY.SAFETY;
 

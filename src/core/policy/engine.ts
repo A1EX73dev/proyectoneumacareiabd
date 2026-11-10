@@ -362,3 +362,12 @@ export function priorityForEvent(event: AgentEvent, state: AppState): PriorityLe
 export function isDeterministicOnly(event: AgentEvent): boolean {
   return event.kind === 'manual' && str(event.payload.action) === 'simulateAlarm';
 }
+
+/**
+ * Eventos que atiende el agente de IA: solo las órdenes de voz o texto. Los disparadores,
+ * el reloj, el ruido y las alarmas los resuelve siempre el motor local: son frecuentes,
+ * deben ser instantáneos y reproducibles, y no dependen de la red.
+ */
+export function isLlmEvent(event: AgentEvent): boolean {
+  return event.kind === 'voice' && !isDeterministicOnly(event);
+}

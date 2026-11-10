@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { engine } from './core/runtime';
 import { AgentPanel } from './ui/agent/AgentPanel';
 import { TriggerAgenda } from './ui/agent/TriggerAgenda';
+import { checkLlmBackend } from './ui/actions';
 import { useApp, useT } from './ui/hooks';
 import { Header } from './ui/layout/Header';
 import { PrivacyNotice } from './ui/layout/PrivacyNotice';
@@ -18,6 +19,7 @@ export default function App() {
 
   useEffect(() => {
     engine.start();
+    void checkLlmBackend();
     return () => engine.stop();
   }, []);
 

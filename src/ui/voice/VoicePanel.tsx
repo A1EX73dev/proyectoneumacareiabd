@@ -21,10 +21,22 @@ const EXAMPLES = [
   'qué estado tiene la 203',
 ];
 
+/** Peticiones abiertas que solo entiende el agente de IA. */
+const LLM_EXAMPLES = [
+  'la 203 no consigue dormir, ayúdale',
+  'prepara la 205 para una cura de 20 minutos',
+  'pon todas las habitaciones ocupadas en modo noche',
+  'hace calor en la 201, bájala un par de grados y pon algo relajante',
+];
+
 export function VoicePanel() {
   const { t, lang } = useT();
   const conversation = useApp((s) => s.agent.conversation);
   const speech = useApp((s) => s.agent.speech);
+  const isLlm = useApp((s) => s.agent.plannerKind === 'llm');
+  const thinking = useApp((s) => s.agent.pending > 0);
+  const llmError = useApp((s) => s.agent.llmError);
+  const listRef = useRef<HTMLOListElement>(null);
   const [text, setText] = useState('');
   const [voiceOut, setVoiceOut] = useState(false);
   const lastSpoken = useRef<string | null>(speech[speech.length - 1]?.id ?? null);
@@ -32,7 +44,8 @@ export function VoicePanel() {
   const onRecognized = useCallback((recognized: string) => {
     void sendUtterance(recognized);
   }, []);
-  const voice = useVoice(onRecognized, 'es-ES');
+  // El agente de IA entiende el idioma de la interfaz; el motor local, solo castellano.
+  const voice = useVoice(onRecognized, isLlm ? SPEECH_LANG[lang] : 'es-ES');
   const { speak } = voice;
 
   // Lee en voz alta las nuevas respuestas del agente (solo si el usuario lo ha activado).
@@ -42,6 +55,12 @@ export function VoicePanel() {
     lastSpoken.current = last.id;
     if (voiceOut) speak(last.text, SPEECH_LANG[lang]);
   }, [speech, voiceOut, lang, speak]);
+
+  // La respuesta del agente de IA llega con retraso: la conversación sigue al último mensaje.
+  useEffect(() => {
+    const list = listRef.current;
+    if (list) list.scrollTop = list.scrollHeight;
+  }, [conversation, thinking]);
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -69,7 +88,8 @@ export function VoicePanel() {
           ? t('voice.error')
           : voice.status === 'listening'
             ? t('voice.listening')
-            : t('voice.idle');
+            : t(isLlm ? 'voice.idleLlm' : 'voice.idle');
+  const examples = isLlm ? [...LLM_EXAMPLES, ...EXAMPLES] : EXAMPLES;
 
   return (
     <Card title={t('voice.title')} titleId="voice-title">
@@ -94,7 +114,23 @@ export function VoicePanel() {
           <p role="status" className="text-sm text-slate-700">
             {statusText}
           </p>
+          <span
+            className={`ml-auto rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+              isLlm ? 'bg-teal-100 text-teal-900' : 'bg-slate-200 text-slate-700'
+            }`}
+          >
+            {t(isLlm ? 'voice.brainLlm' : 'voice.brainMock')}
+          </span>
         </div>
+
+        {isLlm && llmError && (
+          <p
+            role="alert"
+            className="rounded-md bg-amber-50 px-2.5 py-1.5 text-xs text-amber-900 ring-1 ring-amber-200"
+          >
+            {t('voice.llmUnavailable', { error: llmError })}
+          </p>
+        )}
 
         <Switch
           id="voice-out"
@@ -130,7 +166,7 @@ export function VoicePanel() {
             {t('voice.examples')}
           </summary>
           <div className="mt-2 flex flex-wrap gap-1.5">
-            {EXAMPLES.map((ex) => (
+            {examples.map((ex) => (
               <button
                 key={ex}
                 type="button"
@@ -141,15 +177,18 @@ export function VoicePanel() {
               </button>
             ))}
           </div>
-          <p className="mt-2 text-slate-600">{t('voice.examplesNote')}</p>
+          <p className="mt-2 text-slate-600">
+            {t(isLlm ? 'voice.examplesNoteLlm' : 'voice.examplesNote')}
+          </p>
         </details>
 
         <ol
+          ref={listRef}
           aria-live="polite"
           aria-label={t('voice.conversation')}
           className="max-h-56 space-y-1.5 overflow-auto rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200"
         >
-          {conversation.length === 0 && (
+          {conversation.length === 0 && !thinking && (
             <li className="text-sm text-slate-600">{t('voice.empty')}</li>
           )}
           {conversation.slice(-14).map((item) => (
@@ -176,6 +215,13 @@ export function VoicePanel() {
               </span>
             </li>
           ))}
+          {thinking && (
+            <li className="flex justify-start">
+              <span className="animate-pulse rounded-lg bg-white px-2.5 py-1.5 text-sm italic text-slate-600 ring-1 ring-slate-200">
+                {t('voice.thinking')}
+              </span>
+            </li>
+          )}
         </ol>
       </div>
     </Card>

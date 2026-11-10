@@ -22,7 +22,7 @@ export const ca: Messages = {
 
   'privacy.title': 'Privadesa',
   'privacy.body':
-    'Sense càmeres · sense àudio enregistrat · dades simulades · no es desa res (tot viu en memòria i s’esborra en recarregar).',
+    'Sense càmeres · sense àudio enregistrat · dades simulades · no es desa res (tot viu en memòria i s’esborra en recarregar). Amb l’agent d’IA, les teves ordres i l’estat ambiental de les sales s’envien a Google (Gemini), sense dades clíniques.',
   'privacy.redacted': '[dades del pacient esborrades]',
 
   'common.on': 'activat',
@@ -122,7 +122,7 @@ export const ca: Messages = {
   'source.voice': 'Veu / text',
   'source.trigger': 'Disparador horari',
   'source.agent': 'Agent',
-  'source.llm': 'LLM',
+  'source.llm': 'Agent d’IA',
   'source.system': 'Sistema',
 
   'protocol.noche': 'Nit',
@@ -178,7 +178,7 @@ export const ca: Messages = {
   'urgency.alta': 'Alta',
 
   'planner.mock': 'Motor de polítiques (local)',
-  'planner.llm': 'LLM',
+  'planner.llm': 'Agent d’IA (Gemini)',
 
   'tool.set_temperature': 'Temperatura',
   'tool.set_light': 'Llum',
@@ -238,7 +238,7 @@ export const ca: Messages = {
   'reason.safety': 'Seguretat clínica: llum de treball immediata, silenci i sense aroma',
   'reason.voice': 'Ordre de veu/text: «{text}»',
   'reason.clarify': 'L’ordre no és clara: demanar aclariment',
-  'reason.llm': 'Decisió del LLM',
+  'reason.llm': 'Agent d’IA, ordre: «{text}»',
   'reason.confirmation': 'Confirmar el que s’ha executat',
 
   'error.roomNotFound': 'L’habitació {room} no existeix.',
@@ -318,11 +318,16 @@ export const ca: Messages = {
 
   'agent.title': 'Agent',
   'agent.planner': 'Cervell de l’agent',
-  'agent.soon': 'properament',
   'agent.plannerHint':
-    'L’agent només actua mitjançant funcions. Si el LLM falla o proposa una crida invàlida, es fa servir el motor local.',
+    'L’agent només actua mitjançant funcions validades. L’agent d’IA atén les ordres de veu i text; disparadors, rellotge i alarmes els resol sempre el motor local. Si la IA falla, respon el motor local.',
   'agent.fallbacks': 'Caigudes al motor local: {n}.',
-  'agent.fallback': 'El LLM ha fallat; es fa servir el motor de polítiques local',
+  'agent.fallback': 'L’agent d’IA ha fallat; respon el motor de polítiques local',
+  'agent.llmReady': 'connectat',
+  'agent.llmUnconfigured': 'sense API key',
+  'agent.llmOffline': 'sense backend',
+  'agent.llmSetupHint':
+    'Per activar l’agent d’IA, crea .env.local amb GEMINI_API_KEY i reinicia «npm run dev» (vegeu docs/LLM.md).',
+  'agent.interrupted': 'L’agent d’IA s’ha interromput: {error}.',
   'agent.lastEvent': 'Darrer esdeveniment',
   'agent.noEvent': 'Encara no ha arribat cap esdeveniment.',
   'agent.calls': 'Crides a funcions',
@@ -332,7 +337,8 @@ export const ca: Messages = {
   'agent.notifications': 'Avisos a infermeria (simulats)',
   'agent.noNotifications': 'Sense avisos.',
   'agent.toolDefs': 'Funcions disponibles (JSON Schema)',
-  'agent.toolDefsHint': 'Generat a partir dels esquemes Zod; és el que rebrà el LLM com a eines.',
+  'agent.toolDefsHint':
+    'Generat a partir dels esquemes Zod. L’agent d’IA les rep com a eines, tret de speak i les de dades del pacient.',
 
   'agenda.title': 'Agenda de disparadors',
   'agenda.time': 'Hora',
@@ -364,6 +370,11 @@ export const ca: Messages = {
   'voice.speak': 'Parlar',
   'voice.stop': 'Aturar',
   'voice.idle': 'Prem «Parlar» i digues una ordre en castellà.',
+  'voice.idleLlm': 'Prem «Parlar» i demana el que necessitis amb les teves paraules.',
+  'voice.thinking': 'L’agent està pensant…',
+  'voice.llmUnavailable': 'L’agent d’IA no ha pogut respondre: {error}. Ha respost el motor local.',
+  'voice.brainLlm': 'Agent d’IA',
+  'voice.brainMock': 'Motor local',
   'voice.listening': 'Escoltant…',
   'voice.unsupported':
     'Micròfon no disponible en aquest navegador: fes servir la caixa de text (mateix intèrpret).',
@@ -377,6 +388,8 @@ export const ca: Messages = {
   'voice.examples': 'Exemples d’ordres',
   'voice.examplesNote':
     'Les ordres s’interpreten en castellà. Si no indiques habitació, es fa servir l’oberta.',
+  'voice.examplesNoteLlm':
+    'L’agent d’IA entén llenguatge natural. Si no indiques habitació, fa servir l’oberta o t’ho pregunta.',
   'voice.conversation': 'Conversa amb l’agent',
   'voice.empty': 'Aquí apareixeran les teves ordres i les respostes de l’agent.',
   'voice.you': 'Tu',
@@ -405,8 +418,12 @@ export const ca: Messages = {
   'reply.done': 'Fet: {action}.',
   'reply.many': 'Fet: {count} accions aplicades.',
 
-  'llm.notConfigured':
-    'LLM no configurat: connecta un backend propi (vegeu docs/LLM.md). No es fa cap crida de xarxa.',
-  'llm.deterministicOnly': 'Els esdeveniments de seguretat no es deleguen mai al LLM.',
-  'llm.invalidCall': 'El LLM ha proposat una crida invàlida ({name}): {error}',
+  'llm.notConfigured': 'Agent d’IA no configurat: falta la URL del backend (vegeu docs/LLM.md).',
+  'llm.deterministicOnly':
+    'L’agent d’IA només atén ordres de veu o text; la resta la resol el motor local.',
+  'llm.unreachable': 'no s’ha pogut contactar amb el backend de l’agent',
+  'llm.backendError': 'el backend de l’agent ha respost {status}: {detail}',
+  'llm.refused': 'el model ha rebutjat la petició',
+  'llm.truncated': 'la resposta del model s’ha tallat',
+  'llm.tooManySteps': 'massa passos per a una sola ordre',
 };

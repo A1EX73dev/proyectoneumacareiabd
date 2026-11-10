@@ -1,14 +1,21 @@
 import { useMemo } from 'react';
-import { LLM_AVAILABLE } from '../../core/runtime';
+import type { LlmStatus } from '../../core/state';
 import { formatHHmm } from '../../core/time';
 import { toToolDefinitions } from '../../core/tools';
 import type { PlannerKind } from '../../core/types';
 import { changePlanner } from '../actions';
 import { Card } from '../common/Card';
 import { toJson, URGENCY_BADGE } from '../format';
+import type { MessageKey } from '../../i18n';
 import { useApp, useT } from '../hooks';
 
-const PLANNERS: PlannerKind[] = ['mock', 'llm'];
+const PLANNERS: PlannerKind[] = ['llm', 'mock'];
+
+const LLM_BADGE: Record<Exclude<LlmStatus, 'unknown'>, { key: MessageKey; className: string }> = {
+  ready: { key: 'agent.llmReady', className: 'bg-emerald-100 text-emerald-800' },
+  unconfigured: { key: 'agent.llmUnconfigured', className: 'bg-amber-100 text-amber-900' },
+  offline: { key: 'agent.llmOffline', className: 'bg-amber-100 text-amber-900' },
+};
 
 export function AgentPanel() {
   const { t, tk } = useT();
@@ -17,6 +24,7 @@ export function AgentPanel() {
   const calls = useApp((s) => s.agent.calls);
   const notifications = useApp((s) => s.agent.notifications);
   const fallbacks = useApp((s) => s.agent.fallbacks);
+  const llmStatus = useApp((s) => s.agent.llmStatus);
   const toolDefs = useMemo(() => toJson(toToolDefinitions()), []);
 
   return (
@@ -28,25 +36,23 @@ export function AgentPanel() {
           </legend>
           <div className="flex flex-wrap gap-4">
             {PLANNERS.map((kind) => {
-              const disabled = kind === 'llm' && !LLM_AVAILABLE;
+              const badge = kind === 'llm' && llmStatus !== 'unknown' ? LLM_BADGE[llmStatus] : null;
               return (
-                <label
-                  key={kind}
-                  className={`flex items-center gap-2 text-sm ${disabled ? 'text-slate-500' : 'text-slate-800'}`}
-                >
+                <label key={kind} className="flex items-center gap-2 text-sm text-slate-800">
                   <input
                     type="radio"
                     name="planner"
                     value={kind}
                     checked={plannerKind === kind}
-                    disabled={disabled}
                     onChange={() => changePlanner(kind)}
                     className="accent-teal-600"
                   />
                   {tk('planner', kind)}
-                  {disabled && (
-                    <span className="rounded bg-slate-200 px-1.5 py-0.5 text-xs font-medium text-slate-700">
-                      {t('agent.soon')}
+                  {badge && (
+                    <span
+                      className={`rounded px-1.5 py-0.5 text-xs font-medium ${badge.className}`}
+                    >
+                      {t(badge.key)}
                     </span>
                   )}
                 </label>
@@ -56,6 +62,11 @@ export function AgentPanel() {
           <p className="mt-1 text-xs text-slate-600">
             {t('agent.plannerHint')} {fallbacks > 0 && t('agent.fallbacks', { n: fallbacks })}
           </p>
+          {(llmStatus === 'unconfigured' || llmStatus === 'offline') && (
+            <p className="mt-1 rounded-md bg-amber-50 px-2 py-1 text-xs text-amber-900 ring-1 ring-amber-200">
+              {t('agent.llmSetupHint')}
+            </p>
+          )}
         </fieldset>
 
         <div>

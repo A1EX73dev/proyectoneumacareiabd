@@ -20,7 +20,7 @@ export const es = {
 
   'privacy.title': 'Privacidad',
   'privacy.body':
-    'Sin cámaras · sin audio grabado · datos simulados · nada se guarda (todo vive en memoria y se borra al recargar).',
+    'Sin cámaras · sin audio grabado · datos simulados · nada se guarda (todo vive en memoria y se borra al recargar). Con el agente de IA, tus órdenes y el estado ambiental de las salas se envían a Google (Gemini), sin datos clínicos.',
   'privacy.redacted': '[datos del paciente borrados]',
 
   'common.on': 'activado',
@@ -121,7 +121,7 @@ export const es = {
   'source.voice': 'Voz / texto',
   'source.trigger': 'Disparador horario',
   'source.agent': 'Agente',
-  'source.llm': 'LLM',
+  'source.llm': 'Agente de IA',
   'source.system': 'Sistema',
 
   'protocol.noche': 'Noche',
@@ -177,7 +177,7 @@ export const es = {
   'urgency.alta': 'Alta',
 
   'planner.mock': 'Motor de políticas (local)',
-  'planner.llm': 'LLM',
+  'planner.llm': 'Agente de IA (Gemini)',
 
   'tool.set_temperature': 'Temperatura',
   'tool.set_light': 'Luz',
@@ -237,7 +237,7 @@ export const es = {
   'reason.safety': 'Seguridad clínica: luz de trabajo inmediata, silencio y sin aroma',
   'reason.voice': 'Orden de voz/texto: «{text}»',
   'reason.clarify': 'La orden no es clara: pedir aclaración',
-  'reason.llm': 'Decisión del LLM',
+  'reason.llm': 'Agente de IA, orden: «{text}»',
   'reason.confirmation': 'Confirmar lo ejecutado',
 
   'error.roomNotFound': 'La habitación {room} no existe.',
@@ -317,11 +317,16 @@ export const es = {
 
   'agent.title': 'Agente',
   'agent.planner': 'Cerebro del agente',
-  'agent.soon': 'próximamente',
   'agent.plannerHint':
-    'El agente solo actúa mediante funciones. Si el LLM falla o propone una llamada inválida, se usa el motor local.',
+    'El agente solo actúa mediante funciones validadas. El agente de IA atiende las órdenes de voz y texto; disparadores, reloj y alarmas los resuelve siempre el motor local. Si la IA falla, responde el motor local.',
   'agent.fallbacks': 'Caídas al motor local: {n}.',
-  'agent.fallback': 'El LLM ha fallado; se usa el motor de políticas local',
+  'agent.fallback': 'El agente de IA ha fallado; responde el motor de políticas local',
+  'agent.llmReady': 'conectado',
+  'agent.llmUnconfigured': 'sin API key',
+  'agent.llmOffline': 'sin backend',
+  'agent.llmSetupHint':
+    'Para activar el agente de IA, crea .env.local con GEMINI_API_KEY y reinicia «npm run dev» (ver docs/LLM.md).',
+  'agent.interrupted': 'El agente de IA se ha interrumpido: {error}.',
   'agent.lastEvent': 'Último evento',
   'agent.noEvent': 'Aún no ha llegado ningún evento.',
   'agent.calls': 'Llamadas a funciones',
@@ -332,7 +337,7 @@ export const es = {
   'agent.noNotifications': 'Sin avisos.',
   'agent.toolDefs': 'Funciones disponibles (JSON Schema)',
   'agent.toolDefsHint':
-    'Generado desde los esquemas Zod; es lo que recibirá el LLM como herramientas.',
+    'Generado desde los esquemas Zod. El agente de IA las recibe como herramientas, salvo speak y las de datos del paciente.',
 
   'agenda.title': 'Agenda de disparadores',
   'agenda.time': 'Hora',
@@ -364,6 +369,12 @@ export const es = {
   'voice.speak': 'Hablar',
   'voice.stop': 'Parar',
   'voice.idle': 'Pulsa «Hablar» y di una orden en castellano.',
+  'voice.idleLlm': 'Pulsa «Hablar» y pide lo que necesites con tus palabras.',
+  'voice.thinking': 'El agente está pensando…',
+  'voice.llmUnavailable':
+    'El agente de IA no ha podido responder: {error}. Ha respondido el motor local.',
+  'voice.brainLlm': 'Agente de IA',
+  'voice.brainMock': 'Motor local',
   'voice.listening': 'Escuchando…',
   'voice.unsupported':
     'Micrófono no disponible en este navegador: usa la caja de texto (mismo intérprete).',
@@ -377,6 +388,8 @@ export const es = {
   'voice.examples': 'Ejemplos de órdenes',
   'voice.examplesNote':
     'Las órdenes se interpretan en castellano. Si no indicas habitación, se usa la abierta.',
+  'voice.examplesNoteLlm':
+    'El agente de IA entiende lenguaje natural. Si no indicas habitación, usa la abierta o te pregunta.',
   'voice.conversation': 'Conversación con el agente',
   'voice.empty': 'Aquí aparecerán tus órdenes y las respuestas del agente.',
   'voice.you': 'Tú',
@@ -405,10 +418,14 @@ export const es = {
   'reply.done': 'Hecho: {action}.',
   'reply.many': 'Hecho: {count} acciones aplicadas.',
 
-  'llm.notConfigured':
-    'LLM no configurado: conecta un backend propio (ver docs/LLM.md). No se hace ninguna llamada de red.',
-  'llm.deterministicOnly': 'Los eventos de seguridad nunca se delegan al LLM.',
-  'llm.invalidCall': 'El LLM propuso una llamada inválida ({name}): {error}',
+  'llm.notConfigured': 'Agente de IA no configurado: falta la URL del backend (ver docs/LLM.md).',
+  'llm.deterministicOnly':
+    'El agente de IA solo atiende órdenes de voz o texto; el resto lo resuelve el motor local.',
+  'llm.unreachable': 'no se ha podido contactar con el backend del agente',
+  'llm.backendError': 'el backend del agente respondió {status}: {detail}',
+  'llm.refused': 'el modelo ha rechazado la petición',
+  'llm.truncated': 'la respuesta del modelo se ha cortado',
+  'llm.tooManySteps': 'demasiados pasos para una sola orden',
 };
 
 export type MessageKey = keyof typeof es;

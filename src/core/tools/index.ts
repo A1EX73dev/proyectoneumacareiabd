@@ -56,7 +56,7 @@ export function getTool(name: string): ToolSpec | undefined {
 
 export type JsonSchema = Record<string, unknown>;
 
-/** Formato de herramienta de Anthropic Messages API (`tools: [{ name, description, input_schema }]`). */
+/** Herramienta en JSON Schema: `{ name, description, input_schema }` (el backend la traduce a Gemini). */
 export interface ToolDef {
   name: string;
   description: string;

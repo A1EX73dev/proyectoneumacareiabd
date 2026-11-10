@@ -1,4 +1,4 @@
 export * from './types';
-export { AnthropicProvider, LlmNotConfiguredError } from './anthropic';
-export type { AnthropicProviderOptions } from './anthropic';
+export { BackendProvider, LlmBackendError, LlmNotConfiguredError } from './backend';
+export type { BackendProviderOptions } from './backend';
 export { ScriptedProvider } from './scripted';

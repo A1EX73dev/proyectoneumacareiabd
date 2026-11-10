@@ -4,11 +4,11 @@ Panel web para una planta hospitalaria **simulada** (habitaciones 201–210) con
 
 1. **Plano 2D** (SVG) de la planta.
 2. **Habitación en 3D** (three.js) con un menú lateral para manipular el entorno.
-3. **Agente de IA** que actúa **solo mediante funciones** (tool calling). Entiende órdenes de voz o de texto y se activa con disparadores horarios (comidas, medicación, curas…).
+3. **Agente de IA** que actúa **solo mediante funciones** (tool calling). Las órdenes de voz o de texto las atiende un agente con Gemini (o, sin API key, un intérprete local por reglas), y un motor de políticas determinista reacciona a los disparadores horarios (comidas, medicación, curas…).
 
 La habitación se personaliza clasificando al paciente en 3 categorías a partir de un formulario. **Nada se persiste.**
 
-> ⚠️ **Todo es una simulación**: no hay sensores ni dispositivos reales, ni cámaras, ni audio grabado. Los datos solo viven en memoria y se borran al recargar la página.
+> ⚠️ **Todo es una simulación**: no hay sensores ni dispositivos reales, ni cámaras, ni audio grabado. Los datos solo viven en memoria y se borran al recargar la página. Si activas el agente de IA, las órdenes y el estado ambiental de las salas se envían a Google (ver [Privacidad](#privacidad)).
 
 ## Instalación y scripts
 
@@ -19,11 +19,22 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
+### Activar el agente de IA
+
+El chat de voz y texto puede atenderlo un agente de IA (Gemini). Necesita una API key de Gemini, que puedes crear en [Google AI Studio](https://aistudio.google.com/apikey) y que **solo lee el servidor de Vite** (nunca llega al navegador):
+
+```bash
+cp .env.example .env.local   # y escribe tu GEMINI_API_KEY
+npm run dev
+```
+
+Al arrancar, la interfaz pregunta al backend (`GET /api/agent`) si hay clave. Si la hay, el agente de IA queda seleccionado como «cerebro» en el panel _Agente_; si no, la aplicación funciona igual con el intérprete local. Detalles en **[docs/LLM.md](docs/LLM.md)**.
+
 | Script              | Qué hace                                               |
 | ------------------- | ------------------------------------------------------ |
-| `npm run dev`       | Servidor de desarrollo (Vite)                          |
+| `npm run dev`       | Servidor de desarrollo (Vite) + backend `/api/agent`   |
 | `npm run build`     | Comprobación de tipos y build de producción en `dist/` |
-| `npm run preview`   | Sirve el build                                         |
+| `npm run preview`   | Sirve el build (también con `/api/agent`)              |
 | `npm test`          | Pruebas unitarias del núcleo (Vitest)                  |
 | `npm run lint`      | ESLint, sin avisos permitidos (`--max-warnings 0`)     |
 | `npm run typecheck` | `tsc` estricto (app y configuración de Vite)           |
@@ -43,13 +54,13 @@ src/
     time.ts · color.ts · ids.ts
     classify.ts            # clasificador A/B/C por pesos, detrás de la interfaz Classifier
     scheduler.ts           # reloj simulado, ventanas de disparo y motor de ticks
-    agent.ts               # bucle: evento → planner → ToolCall[] → runTool → confirmación
+    agent.ts               # bucle: evento → (agente de IA | motor local) → runTool → confirmación
     runtime.ts             # instancias únicas (agente, motor, planners)
     tools/                 # una función por archivo + index.ts (registro, JSON Schema, runTool)
     policy/                # motor de políticas: prioridades, protocolos×categoría, perfiles horarios
     voice/                 # intérprete por reglas: texto → ToolCall[] (números en palabras)
-    planners/              # interfaz Planner, MockPlanner y LlmPlanner (esqueleto)
-    llm/                   # interfaz LlmProvider, AnthropicProvider (stub) y ScriptedProvider
+    planners/              # MockPlanner (motor local) y LlmPlanner (agente de IA: bucle con tool_result)
+    llm/                   # interfaz LlmProvider, BackendProvider (vía backend) y ScriptedProvider
     __tests__/             # pruebas unitarias
   ui/
     map/                   # plano 2D
@@ -60,7 +71,11 @@ src/
     common/ · layout/      # componentes compartidos, cabecera y aviso de privacidad
   i18n/                    # es.ts (por defecto), ca.ts, en.ts
   App.tsx · main.tsx
-docs/LLM.md                # cómo conectar un LLM real a través de un backend
+server/
+  agentProxy.ts            # backend del agente: guarda la API key y llama a Gemini (SDK @google/genai)
+  geminiFormat.ts          # traducción entre el formato del navegador y el de Gemini
+  vitePlugin.ts            # lo monta en /api/agent dentro de Vite (dev y preview)
+docs/LLM.md                # cómo funciona el agente de IA y cómo desplegar el backend
 ```
 
 **Reglas de arquitectura**
@@ -118,34 +133,48 @@ Además, el agente aplica el protocolo circadiano al cambiar de fase: **noche** 
 
 ### Voz y texto
 
-`useVoice()` usa la Web Speech API (`es-ES`) y responde con `speechSynthesis`. Solo se activa con un clic y todo va en `try/catch`. Si no hay micrófono, la **caja de texto** usa exactamente el mismo intérprete (`core/voice`). El intérprete funciona por reglas y sin red; entiende números en palabras y pide una aclaración corta cuando no entiende. Ejemplos:
+`useVoice()` usa la Web Speech API y responde con `speechSynthesis`. Solo se activa con un clic y todo va en `try/catch`. Si no hay micrófono, la **caja de texto** hace exactamente lo mismo: voz y texto llegan al agente como el mismo evento.
+
+Quién responde depende del «cerebro» elegido en el panel _Agente_:
+
+- **Agente de IA (Gemini)**: entiende lenguaje natural en el idioma de la interfaz, peticiones abiertas («la 203 no consigue dormir»), cambios relativos, varias habitaciones a la vez y el hilo de la conversación («y ahora un poco menos»). Pregunta cuando falta un dato.
+- **Motor local** (`core/voice`): intérprete por reglas, sin red y solo en castellano; entiende números en palabras y pide una aclaración corta cuando no entiende. Es también el respaldo si la IA no está disponible.
+
+Ejemplos que entienden los dos:
 
 > «abre la habitación 205» · «sube la temperatura a veintitrés» · «baja la luz al 20 por ciento» · «luz más cálida» · «pon el protocolo de noche» · «activa el modo IA» · «desactiva el aroma» · «pon sonido de lluvia» · «programa la medicación a las 14:00 en la 202» · «avisa a enfermería» · «qué estado tiene la 203»
 
 Si no indicas habitación, se usa la que está abierta.
 
-> Nota de privacidad: la aplicación no graba ni envía audio. Sin embargo, algunos navegadores (por ejemplo, Chrome) hacen el reconocimiento de voz con un servicio en la nube del propio navegador. Si eso no es aceptable, usa la caja de texto.
+> Nota de privacidad: la aplicación no graba ni envía audio (al agente de IA solo le llega el texto reconocido). Sin embargo, algunos navegadores (por ejemplo, Chrome) hacen el reconocimiento de voz con un servicio en la nube del propio navegador. Si eso no es aceptable, usa la caja de texto.
 
-### Planner enchufable
+### Agente de IA y motor local
 
 ```ts
 interface Planner {
+  // motor local: planifica, no ejecuta
   plan(ctx: AgentContext): Promise<ToolCall[]>;
 }
+interface ConversationalPlanner {
+  // agente de IA: ejecuta y ve los resultados
+  converse(ctx: AgentContext, exec: ToolExecutor): Promise<AgentTurn>;
+}
 interface LlmProvider {
-  complete(req: { system; messages; tools }): Promise<{ toolCalls; text? }>;
+  complete(req: { system; messages; tools }): Promise<{ toolCalls; text?; content? }>;
 }
 ```
 
-- **MockPlanner** (por defecto): el motor de políticas de `core/policy/engine.ts`.
-- **LlmPlanner**: construye el prompt y el contexto, llama al proveedor con `toToolDefinitions()`, valida cada llamada con Zod y le asigna la prioridad _del evento_. Si falla o propone algo inválido, el agente **cae al MockPlanner** y lo registra.
-- En la UI, la opción LLM aparece deshabilitada con la etiqueta «próximamente».
+- **MockPlanner**: el motor de políticas de `core/policy/engine.ts`. Atiende **siempre** los disparadores, el reloj, el ruido y las alarmas, y las órdenes de voz/texto cuando la IA no está activa.
+- **LlmPlanner** (agente de IA): atiende **solo las órdenes de voz o texto**. Es un bucle acotado: el modelo propone llamadas → `runTool` las valida y ejecuta → el resultado vuelve al modelo como `tool_result` → el modelo sigue o responde. Así puede corregir un argumento inválido, explicar un rechazo por prioridad o alergia y encadenar pasos.
+- **Garantías que no dependen del modelo**: la prioridad la fija el evento (una orden es prioridad 2; el modelo no puede escalar a seguridad); todo pasa por `runTool` (rangos, categoría, alergia, prioridades); el modelo no recibe datos clínicos ni las funciones `classify_patient` / `clear_patient`.
+- **Caída al motor local**: si la IA falla antes de ejecutar nada (sin clave, sin red, rechazo), responde el intérprete local y queda registrado como `planner_fallback`. Si falla a mitad, no se repite nada: el agente cuenta lo que hizo y por qué se paró.
+- La API key vive solo en el backend (`server/agentProxy.ts`), que fija el modelo y los parámetros.
 
-👉 Para conectar un LLM real a través de un backend que guarde la API key, consulta **[docs/LLM.md](docs/LLM.md)**.
+👉 Arquitectura, despliegue y lista de comprobación de seguridad en **[docs/LLM.md](docs/LLM.md)**.
 
 ### i18n y accesibilidad
 
-- Todos los textos de la interfaz están en `src/i18n/` (es/ca/en, con el selector en la cabecera). TypeScript exige que `ca.ts` y `en.ts` tengan todas las claves. El intérprete de órdenes solo funciona en castellano.
+- Todos los textos de la interfaz están en `src/i18n/` (es/ca/en, con el selector en la cabecera). TypeScript exige que `ca.ts` y `en.ts` tengan todas las claves. El intérprete local de órdenes solo funciona en castellano; el agente de IA responde en el idioma de la interfaz.
 - Se puede usar entero con teclado: habitaciones del plano con Tab y Enter, pestañas con flechas, interruptores `role="switch"`, sliders con `aria-valuetext` y regiones `aria-live` para la conversación y los avisos. Incluye enlace «saltar al contenido», contraste AA y respeta `prefers-reduced-motion`. El diseño es responsive.
 
 ## Escenarios manuales de prueba
@@ -164,7 +193,7 @@ Otros escenarios útiles:
 
 ## Pruebas automáticas
 
-`npm test` ejecuta 79 pruebas del núcleo:
+`npm test` ejecuta 91 pruebas:
 
 - `priorities.test.ts`: jerarquía de prioridades, rechazos registrados, ajuste manual ⇒ Modo IA desactivado, rampas sin saltos.
 - `clamp.test.ts`: recorte a rangos del dispositivo y de la categoría, rangos clínicos de la cura, argumentos inválidos (nunca lanza), JSON Schema con `minimum`/`maximum`.
@@ -172,11 +201,14 @@ Otros escenarios útiles:
 - `classify.test.ts`: 3 perfiles de ejemplo → A, B y C; determinismo; borrado de datos.
 - `scheduler.test.ts`: una vez por ventana, saltos de reloj, medianoche, «once»; comida, 06:00, restablecimiento tras la cura y descanso hasta las 06:00 con el motor completo.
 - `interpreter.test.ts`: más de 20 frases, números en palabras, horas habladas, órdenes compuestas y aclaraciones.
-- `planner.test.ts`: caída al Mock (LLM no configurado o llamada inválida), prioridad del evento, seguridad nunca delegada, `parseMessagesResponse`.
+- `planner.test.ts`: bucle del agente de IA con un proveedor guionizado (prioridad del evento, `tool_result`, corrección de llamadas inválidas, límite de pasos), caída al motor local, contexto sin datos clínicos, funciones de paciente vetadas, eventos que nunca se delegan y `BackendProvider` contra un backend simulado.
+- `server/agentProxy.test.ts`: el backend fija modelo y parámetros, rechaza otros orígenes y cuerpos mal formados, no expone la clave, limita la frecuencia y traduce bien al formato de Gemini (firmas de razonamiento intactas, resultados agrupados, bloqueos de seguridad).
 - `i18n.test.ts`: paridad de claves es/ca/en y claves dinámicas.
 
 ## Privacidad
 
-- Ningún dato se guarda: no hay `localStorage`, `sessionStorage`, cookies ni backend.
-- No hay llamadas de red en tiempo de ejecución ni API keys en el código.
+- Ningún dato se guarda: no hay `localStorage`, `sessionStorage`, cookies ni base de datos.
+- Con el **motor local** no hay ninguna llamada de red en tiempo de ejecución.
+- Con el **agente de IA**, cada orden envía a Google (API de Gemini), a través del backend propio, el texto de la orden, la conversación reciente y el estado ambiental de las habitaciones (categoría A/B/C, protocolo y valores). **Nunca** se envía el formulario del paciente, y el modelo no puede clasificar ni borrar pacientes. El backend no registra el cuerpo de las peticiones. Ojo: con el nivel gratuito de la API de Gemini, Google puede usar el contenido enviado para mejorar sus productos; para datos reales usa una cuenta de pago y revisa sus condiciones.
+- La API key no está en el código ni en el bundle: se lee de `.env.local` (ignorado por git) solo en el servidor.
 - El estado vive en un store Zustand en memoria y se pierde al recargar la página.

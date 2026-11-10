@@ -5,11 +5,12 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "skipLibCheck": true,
+    "types": ["node"],
     "isolatedModules": true,
     "noEmit": true,
     "strict": true,
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["vite.config.ts"]
+  "include": ["vite.config.ts", "server"]
 }
