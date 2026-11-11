@@ -5,6 +5,8 @@ import { TOOL_NAMES } from '../tools';
 import {
   ADMISSION_REASONS,
   AROMA_TYPES,
+  BED_POSITIONS,
+  BED_RESTRICTIONS,
   CATEGORY_IDS,
   PRIORITY_LEVELS,
   PROTOCOL_IDS,
@@ -24,6 +26,8 @@ describe('i18n', () => {
       ...TRIGGER_TYPES.map((x) => `trigger.${x}`),
       ...SOUNDSCAPES.map((x) => `soundscape.${x}`),
       ...AROMA_TYPES.map((x) => `aroma.${x}`),
+      ...BED_POSITIONS.map((x) => `bedPosition.${x}`),
+      ...BED_RESTRICTIONS.map((x) => `bedRestriction.${x}`),
       ...CATEGORY_IDS.flatMap((c) => [`category.${c}`, `categoryDesc.${c}`]),
       ...PRIORITY_LEVELS.map((p) => `priority.${p}`),
       ...ADMISSION_REASONS.map((x) => `admission.${x}`),

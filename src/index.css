@@ -7,8 +7,13 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /* Con un diálogo modal abierto, la página de detrás no se desplaza. */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
   body {
-    @apply bg-slate-100 font-sans antialiased;
+    @apply bg-slate-100 font-sans text-slate-900 antialiased;
   }
 
   /* Foco visible en elementos SVG navegables con teclado. */
@@ -23,5 +28,76 @@
       animation-duration: 0.01ms !important;
       transition-duration: 0.01ms !important;
     }
+  }
+}
+
+/*
+ * Piezas de interfaz que se repiten en todos los paneles. Se definen aquí una sola vez
+ * para que botones, campos y etiquetas tengan el mismo aspecto en toda la aplicación.
+ */
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-sm font-semibold transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-600 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-sm {
+    @apply rounded-md px-2.5 py-1.5 text-xs;
+  }
+
+  .btn-primary {
+    @apply bg-teal-700 text-white shadow-sm hover:bg-teal-800;
+  }
+
+  .btn-secondary {
+    @apply bg-white text-slate-800 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50;
+  }
+
+  .btn-ghost {
+    @apply text-slate-700 hover:bg-slate-100;
+  }
+
+  .btn-danger {
+    @apply bg-red-700 text-white shadow-sm hover:bg-red-800 focus-visible:outline-red-700;
+  }
+
+  .btn-danger-soft {
+    @apply bg-red-50 text-red-800 ring-1 ring-inset ring-red-200 hover:bg-red-100 focus-visible:outline-red-700;
+  }
+
+  .field-label {
+    @apply block text-sm font-medium text-slate-800;
+  }
+
+  .field-input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm placeholder:text-slate-400 focus-visible:border-teal-600 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600 disabled:bg-slate-50 disabled:text-slate-500;
+  }
+
+  .field-hint {
+    @apply text-xs text-slate-600;
+  }
+
+  /* Título pequeño de sección dentro de una tarjeta. */
+  .eyebrow {
+    @apply text-xs font-semibold uppercase tracking-wide text-slate-600;
+  }
+
+  .chip {
+    @apply inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-0.5 text-xs font-medium text-slate-800 ring-1 ring-inset ring-slate-200;
+  }
+
+  .note {
+    @apply rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-800 ring-1 ring-inset ring-slate-200;
+  }
+
+  .note-warning {
+    @apply rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-950 ring-1 ring-inset ring-amber-200;
+  }
+
+  .note-danger {
+    @apply rounded-lg bg-red-50 px-3 py-2 text-sm text-red-900 ring-1 ring-inset ring-red-200;
+  }
+
+  .note-info {
+    @apply rounded-lg bg-teal-50 px-3 py-2 text-sm text-teal-950 ring-1 ring-inset ring-teal-200;
   }
 }

@@ -54,6 +54,7 @@ describe('clamp de rangos', () => {
         tempC: 40.123,
         lightPct: 50.6,
         kelvin: 1000,
+        blindsPct: 130,
         soundPct: 101,
         soundscape: 'lluvia',
         aromaOn: true,
@@ -62,7 +63,14 @@ describe('clamp de rangos', () => {
       },
       DEVICE_RANGES,
     );
-    expect(v).toMatchObject({ tempC: 28, lightPct: 51, kelvin: 2200, soundPct: 100, aromaPct: 0 });
+    expect(v).toMatchObject({
+      tempC: 28,
+      lightPct: 51,
+      kelvin: 2200,
+      blindsPct: 100,
+      soundPct: 100,
+      aromaPct: 0,
+    });
   });
 
   it('runTool nunca lanza: argumentos inválidos o función desconocida devuelven ok:false', () => {
@@ -87,6 +95,7 @@ describe('clamp de rangos', () => {
       tempC: 20,
       lightPct: 0,
       kelvin: 3000,
+      blindsPct: 50,
       soundPct: 0,
       soundscape: 'silencio' as const,
       aromaOn: false,

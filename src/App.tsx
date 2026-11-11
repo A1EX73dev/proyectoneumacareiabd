@@ -3,10 +3,14 @@ import { engine } from './core/runtime';
 import { AgentPanel } from './ui/agent/AgentPanel';
 import { TriggerAgenda } from './ui/agent/TriggerAgenda';
 import { checkLlmBackend } from './ui/actions';
+import { Toaster } from './ui/common/Toaster';
 import { useApp, useT } from './ui/hooks';
 import { Header } from './ui/layout/Header';
 import { PrivacyNotice } from './ui/layout/PrivacyNotice';
 import { FloorPlan } from './ui/map/FloorPlan';
+import { WardCensus } from './ui/map/WardCensus';
+import { WardStats } from './ui/map/WardStats';
+import { AdmitDialog } from './ui/patient/AdmitDialog';
 import { RoomMenu } from './ui/room/RoomMenu';
 import { RoomView } from './ui/room/RoomView';
 import { VoicePanel } from './ui/voice/VoicePanel';
@@ -32,28 +36,38 @@ export default function App() {
     <div className="min-h-screen bg-slate-100 pb-24 text-slate-900">
       <a
         href="#main"
-        className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-30 focus:rounded focus:bg-white focus:px-3 focus:py-2 focus:text-slate-900"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-white focus:px-3 focus:py-2 focus:text-slate-900 focus:shadow-lg"
       >
         {t('a11y.skip')}
       </a>
       <Header />
       <main
         id="main"
-        className="mx-auto grid max-w-[1600px] gap-4 p-3 md:p-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,420px)]"
+        className="mx-auto grid max-w-[1600px] gap-5 p-4 md:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(360px,440px)]"
       >
-        <div className="flex min-w-0 flex-col gap-4">
-          {roomId ? <RoomView roomId={roomId} /> : <FloorPlan />}
-          <div className="grid gap-4 xl:grid-cols-2">
+        <div className="flex min-w-0 flex-col gap-5">
+          {roomId ? (
+            <RoomView roomId={roomId} />
+          ) : (
+            <>
+              <WardStats />
+              <FloorPlan />
+              <WardCensus />
+            </>
+          )}
+          <div className="grid gap-5 xl:grid-cols-2">
             <VoicePanel />
             <AgentPanel />
           </div>
           {roomId && <TriggerAgenda />}
         </div>
-        <aside className="flex min-w-0 flex-col gap-4" aria-label={t('a11y.sidePanel')}>
+        <aside className="flex min-w-0 flex-col gap-5" aria-label={t('a11y.sidePanel')}>
           {roomId ? <RoomMenu roomId={roomId} /> : <TriggerAgenda />}
         </aside>
       </main>
       <PrivacyNotice />
+      <AdmitDialog />
+      <Toaster />
     </div>
   );
 }

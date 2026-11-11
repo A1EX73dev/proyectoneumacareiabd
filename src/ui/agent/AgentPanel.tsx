@@ -28,7 +28,7 @@ export function AgentPanel() {
   const toolDefs = useMemo(() => toJson(toToolDefinitions()), []);
 
   return (
-    <Card title={t('agent.title')} titleId="agent-title">
+    <Card title={t('agent.title')} titleId="agent-title" icon="sparkles">
       <div className="space-y-4">
         <fieldset>
           <legend className="mb-1 text-sm font-semibold text-slate-900">

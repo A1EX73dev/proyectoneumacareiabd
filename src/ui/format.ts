@@ -1,14 +1,23 @@
-import type { CategoryId, ProtocolId, Urgency } from '../core/types';
+import type { CategoryId, PriorityLevel, ProtocolId, Urgency } from '../core/types';
 
+/**
+ * Color de cada protocolo. Va siempre acompañado del nombre escrito (nunca es el único
+ * canal) y solo se usa en marcas pequeñas o como tinte suave del plano.
+ *
+ * Los siete tonos están comprobados entre sí, par a par, con un validador de daltonismo:
+ * ningún par queda por debajo del umbral de visión normal (ΔE ≥ 15) y el peor par con
+ * deuteranopía (medicación/calma, ΔE 6,6) se apoya en la etiqueta. «Neutro» es un gris a
+ * propósito: significa ausencia de protocolo especial.
+ */
 export const PROTOCOL_COLORS: Record<ProtocolId, string> = {
   noche: '#4338ca',
   calma: '#a78bfa',
   manana: '#facc15',
-  comida: '#fb923c',
-  medicacion: '#38bdf8',
-  cura: '#f87171',
-  visita: '#f472b6',
-  neutro: '#cbd5e1',
+  comida: '#f97316',
+  medicacion: '#06b6d4',
+  cura: '#e11d48',
+  visita: '#15803d',
+  neutro: '#94a3b8',
 };
 
 export const CATEGORY_BADGE: Record<CategoryId, string> = {
@@ -23,11 +32,21 @@ export const URGENCY_BADGE: Record<Urgency, string> = {
   alta: 'bg-red-100 text-red-900',
 };
 
+export const PRIORITY_BADGE: Record<PriorityLevel, string> = {
+  1: 'bg-red-100 text-red-900',
+  2: 'bg-orange-100 text-orange-900',
+  3: 'bg-amber-100 text-amber-900',
+  4: 'bg-indigo-100 text-indigo-900',
+  5: 'bg-emerald-100 text-emerald-900',
+  6: 'bg-slate-100 text-slate-800',
+};
+
 export const fmtTemp = (v: number): string => `${(Math.round(v * 10) / 10).toFixed(1)} °C`;
 export const fmtPct = (v: number): string => `${Math.round(v)} %`;
 export const fmtKelvin = (v: number): string => `${Math.round(v / 10) * 10} K`;
 export const fmtDb = (v: number): string => `${Math.round(v)} dB`;
 export const fmtLux = (v: number): string => `${Math.round(v)} lx`;
+export const fmtDeg = (v: number): string => `${Math.round(v)}°`;
 
 export function toJson(value: unknown): string {
   try {

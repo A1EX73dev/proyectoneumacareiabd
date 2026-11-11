@@ -159,7 +159,11 @@ describe('agente de IA y caída al motor local', () => {
       { quien: 'usuario', texto: 'baja la luz' },
       { quien: 'asistente', texto: '¿En qué habitación?' },
     ]);
-    expect(second).not.toMatch(/patientForm|anxiety|admissionReason|deliriumRisk|aromaAllergy/);
+    expect(second).not.toMatch(
+      /patientForm|anxiety|admissionReason|deliriumRisk|aromaAllergy|bedRestriction/,
+    );
+    // De la cama solo viaja el ángulo y el rango permitido.
+    expect(second).toMatch(/"cama":\{"respaldo":30,"permitido":\[0,70\]\}/);
   });
 
   it('si falla a mitad de turno no se repite nada: cuenta lo hecho y por qué se ha parado', async () => {

@@ -4,6 +4,7 @@ import { newId } from '../ids';
 import { checkPriority } from '../policy/priorities';
 import { appStore, patchRoom, pushCall, withLog, type AppStore } from '../state';
 import { PRIORITY, type Range, type ToolCall, type ToolResult } from '../types';
+import { admitPatient } from './admit_patient';
 import { applyProtocol } from './apply_protocol';
 import { cancelTrigger } from './cancel_trigger';
 import { classifyPatient } from './classify_patient';
@@ -15,6 +16,8 @@ import { openRoom } from './open_room';
 import { scheduleTrigger } from './schedule_trigger';
 import { setAroma } from './set_aroma';
 import { setAutoMode } from './set_auto_mode';
+import { setBed } from './set_bed';
+import { setBlinds } from './set_blinds';
 import { setLight } from './set_light';
 import { setSound } from './set_sound';
 import { setTemperature } from './set_temperature';
@@ -27,10 +30,13 @@ export type { ToolContext, ToolSpec } from './types';
 export const TOOLS: ToolSpec[] = [
   setTemperature,
   setLight,
+  setBlinds,
   setSound,
   setAroma,
+  setBed,
   applyProtocol,
   setAutoMode,
+  admitPatient,
   classifyPatient,
   clearPatient,
   scheduleTrigger,

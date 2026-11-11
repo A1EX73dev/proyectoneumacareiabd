@@ -57,10 +57,49 @@ describe('intérprete de comandos (texto → ToolCall[])', () => {
     ['pon la luz a 3000 kelvin', 'set_light', { room: '205', kelvin: 3000 }],
     ['desactiva el modo automático en la 201', 'set_auto_mode', { room: '201', on: false }],
     ['avisa urgente a la enfermera', 'notify_staff', { urgency: 'alta' }],
+    ['sube la persiana', 'set_blinds', { room: '205', pct: 100 }],
+    ['baja la persiana de la 203', 'set_blinds', { room: '203', pct: 0 }],
+    ['cierra las persianas', 'set_blinds', { room: '205', pct: 0 }],
+    ['persiana al 40 por ciento', 'set_blinds', { room: '205', pct: 40 }],
+    ['baja un poco la persiana', 'set_blinds', { room: '205', deltaPct: -25 }],
+    ['pon la persiana a la mitad', 'set_blinds', { room: '205', pct: 50 }],
+    ['incorpora la cama', 'set_bed', { room: '205', position: 'incorporada' }],
+    ['estira la camilla de la 201', 'set_bed', { room: '201', position: 'plana' }],
+    ['pon la cama a cuarenta y cinco grados', 'set_bed', { room: '205', deg: 45 }],
+    ['sube un poco el cabecero', 'set_bed', { room: '205', deltaDeg: 15 }],
+    ['deja la cama semiincorporada', 'set_bed', { room: '205', position: 'semi' }],
+    ['incorpórame un poco', 'set_bed', { room: '205', deltaDeg: 15 }],
+    ['quiero tumbarme', 'set_bed', { room: '205', position: 'plana' }],
   ])('«%s» → %s', (text, name, args) => {
     const c = first(text);
     expect(c?.name).toBe(name);
     expect(c?.args).toMatchObject(args);
+  });
+
+  it('«abre la persiana de la 201» mueve la persiana, no abre la habitación', () => {
+    expect(first('abre la persiana de la 201')).toMatchObject({
+      name: 'set_blinds',
+      args: { room: '201', pct: 100 },
+    });
+    expect(first('abre la habitación 201')?.name).toBe('open_room');
+  });
+
+  it('«sube» y «baja» se aplican al dispositivo que se nombra, no a la cama por estar en la frase', () => {
+    expect(first('sube la temperatura, estoy en la cama')).toMatchObject({
+      name: 'set_temperature',
+      args: { delta: 1 },
+    });
+    expect(first('tengo frío en la cama')?.name).toBe('set_temperature');
+    expect(first('baja la luz, que la persiana está abierta')?.name).toBe('set_light');
+    expect(first('sube la persiana para que entre luz')?.name).toBe('set_blinds');
+  });
+
+  it('una frase que no es una orden de postura no mueve la cama', () => {
+    for (const text of ['el paciente se siente mal', 'está acostumbrado al ruido']) {
+      const r = interpret(text, ctx);
+      expect(r.calls).toHaveLength(0);
+      expect(r.clarification).toBeTruthy();
+    }
   });
 
   it('entiende horas habladas', () => {
@@ -81,6 +120,8 @@ describe('intérprete de comandos (texto → ToolCall[])', () => {
   it('admite órdenes compuestas', () => {
     const r = interpret('baja la luz al 30 por ciento y pon sonido de olas', ctx);
     expect(r.calls.map((c) => c.name)).toEqual(['set_light', 'set_sound']);
+    const both = interpret('baja la persiana e incorpora la cama', ctx);
+    expect(both.calls.map((c) => c.name)).toEqual(['set_blinds', 'set_bed']);
   });
 
   it('«activa el modo IA» sin sala abierta lo aplica a todas las ocupadas', () => {

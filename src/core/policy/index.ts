@@ -1,3 +1,4 @@
+export * from './bed';
 export * from './priorities';
 export * from './protocols';
 export * from './triggerProfiles';

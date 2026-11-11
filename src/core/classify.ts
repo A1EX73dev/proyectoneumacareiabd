@@ -165,9 +165,14 @@ export class WeightedClassifier implements Classifier {
 
 export const classifier: Classifier = new WeightedClassifier();
 
-/** Perfiles de ejemplo (simulados) usados en las pruebas y para sembrar la demo. */
+/**
+ * Perfiles de ejemplo (simulados) usados en las pruebas y para sembrar la demo. Entre los tres
+ * cubren la cama sin límites (A), la que no se puede estirar (B) y la que no se puede
+ * incorporar del todo (C).
+ */
 export const SAMPLE_FORMS: Record<CategoryId, PatientForm> = {
   A: {
+    name: 'M. Soler',
     age: 52,
     admissionReason: 'oncologia',
     anxiety: 9,
@@ -176,12 +181,14 @@ export const SAMPLE_FORMS: Record<CategoryId, PatientForm> = {
     lightSensitivity: 7,
     mobility: 'autonomo',
     deliriumRisk: 'bajo',
+    bedRestriction: 'ninguna',
     aromaAllergy: false,
     aromaAllergyText: '',
     preferences: 'Luz tenue y sonidos de mar',
     wantsAroma: true,
   },
   B: {
+    name: 'J. Ferrer',
     age: 84,
     admissionReason: 'neurologia',
     anxiety: 4,
@@ -190,12 +197,14 @@ export const SAMPLE_FORMS: Record<CategoryId, PatientForm> = {
     lightSensitivity: 4,
     mobility: 'encamado',
     deliriumRisk: 'alto',
+    bedRestriction: 'respiratoria',
     aromaAllergy: false,
     aromaAllergyText: '',
     preferences: '',
     wantsAroma: false,
   },
   C: {
+    name: 'A. Vidal',
     age: 45,
     admissionReason: 'traumatologia',
     anxiety: 2,
@@ -204,6 +213,7 @@ export const SAMPLE_FORMS: Record<CategoryId, PatientForm> = {
     lightSensitivity: 3,
     mobility: 'asistido',
     deliriumRisk: 'bajo',
+    bedRestriction: 'cadera',
     aromaAllergy: true,
     aromaAllergyText: 'Cítricos',
     preferences: 'Quiere levantarse pronto',
@@ -212,6 +222,7 @@ export const SAMPLE_FORMS: Record<CategoryId, PatientForm> = {
 };
 
 export const EMPTY_FORM: PatientForm = {
+  name: '',
   age: 65,
   admissionReason: 'medicina_interna',
   anxiety: 5,
@@ -220,6 +231,7 @@ export const EMPTY_FORM: PatientForm = {
   lightSensitivity: 5,
   mobility: 'asistido',
   deliriumRisk: 'bajo',
+  bedRestriction: 'ninguna',
   aromaAllergy: false,
   aromaAllergyText: '',
   preferences: '',

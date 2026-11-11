@@ -79,6 +79,23 @@ export type RiskLevel = (typeof RISK_LEVELS)[number];
 export const URGENCY_LEVELS = ['baja', 'media', 'alta'] as const;
 export type Urgency = (typeof URGENCY_LEVELS)[number];
 
+/** Posiciones con nombre del respaldo de la cama: estirada, semiincorporada e incorporada. */
+export const BED_POSITIONS = ['plana', 'semi', 'incorporada'] as const;
+export type BedPosition = (typeof BED_POSITIONS)[number];
+
+/**
+ * Lesión o indicación del paciente que limita cuánto puede moverse el respaldo de la cama.
+ * Los límites de cada una están en `policy/bed.ts`.
+ */
+export const BED_RESTRICTIONS = [
+  'ninguna',
+  'columna',
+  'cadera',
+  'respiratoria',
+  'craneal',
+] as const;
+export type BedRestriction = (typeof BED_RESTRICTIONS)[number];
+
 /**
  * Jerarquía de prioridades: un número menor es MÁS prioritario.
  * Una prioridad menor (número mayor) nunca anula a una mayor.
@@ -103,6 +120,8 @@ export interface EnvValues {
   tempC: number;
   lightPct: number;
   kelvin: number;
+  /** Apertura de la persiana eléctrica: 0 = bajada del todo, 100 = subida del todo. */
+  blindsPct: number;
   soundPct: number;
   soundscape: Soundscape;
   aromaOn: boolean;
@@ -110,11 +129,13 @@ export interface EnvValues {
   aromaType: AromaType;
 }
 
-export type NumericEnvKey = 'tempC' | 'lightPct' | 'kelvin' | 'soundPct' | 'aromaPct';
+export type NumericEnvKey =
+  'tempC' | 'lightPct' | 'kelvin' | 'blindsPct' | 'soundPct' | 'aromaPct';
 export const NUMERIC_ENV_KEYS: NumericEnvKey[] = [
   'tempC',
   'lightPct',
   'kelvin',
+  'blindsPct',
   'soundPct',
   'aromaPct',
 ];
@@ -157,6 +178,8 @@ export interface Readings {
 }
 
 export interface PatientForm {
+  /** Nombre o identificador para reconocer al paciente en el panel; puede ir vacío. */
+  name: string;
   age: number;
   admissionReason: AdmissionReason;
   anxiety: number;
@@ -165,6 +188,8 @@ export interface PatientForm {
   lightSensitivity: number;
   mobility: Mobility;
   deliriumRisk: RiskLevel;
+  /** Lesión que limita el movimiento del respaldo de la cama. */
+  bedRestriction: BedRestriction;
   aromaAllergy: boolean;
   aromaAllergyText: string;
   preferences: string;
@@ -197,6 +222,17 @@ export interface ClassificationResult {
   rule: string | null;
 }
 
+/**
+ * Cama articulada. No forma parte de `EnvValues` a propósito: los protocolos y los
+ * disparadores nunca la mueven; solo cambia con una orden explícita (`set_bed`).
+ */
+export interface BedState {
+  /** Ángulo actual del respaldo en grados (0 = plana). */
+  backrestDeg: number;
+  /** Ángulo pedido; null si la cama ya ha llegado. */
+  targetDeg: number | null;
+}
+
 export interface Room {
   id: string;
   occupied: boolean;
@@ -208,6 +244,7 @@ export interface Room {
   override: Override | null;
   values: EnvValues;
   target: EnvValues | null;
+  bed: BedState;
   readings: Readings;
   noiseSpike: number;
   log: LogEntry[];

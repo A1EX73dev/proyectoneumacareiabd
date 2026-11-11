@@ -1,10 +1,11 @@
 import { t } from '../../i18n';
 import type { ContentBlock, LlmProvider, LlmResponse, Msg } from '../llm/types';
+import { bedGoal, bedLimits } from '../policy/bed';
 import { isOverrideActive } from '../policy/priorities';
 import { isLlmEvent, priorityForEvent } from '../policy/engine';
 import { toToolDefinitions, type ToolDef } from '../tools';
 import { formatHHmm, phaseAt } from '../time';
-import type { EnvValues, ToolCall, ToolResult } from '../types';
+import type { EnvValues, Room, ToolCall, ToolResult } from '../types';
 import type { AgentContext, AgentTurn, ConversationalPlanner, ToolExecutor } from './types';
 
 export class LlmPlannerError extends Error {
@@ -20,10 +21,15 @@ export const MAX_AGENT_STEPS = 6;
 /**
  * Funciones que el agente de IA no recibe:
  * - `speak`: su respuesta final ya se dice y se muestra en la conversación.
- * - `classify_patient` y `clear_patient`: los datos clínicos del paciente solo se tocan
- *   desde el formulario de la interfaz, nunca a través del modelo.
+ * - `admit_patient`, `classify_patient` y `clear_patient`: los datos clínicos del paciente
+ *   solo se tocan desde los formularios de la interfaz, nunca a través del modelo.
  */
-export const LLM_EXCLUDED_TOOLS: readonly string[] = ['speak', 'classify_patient', 'clear_patient'];
+export const LLM_EXCLUDED_TOOLS: readonly string[] = [
+  'speak',
+  'admit_patient',
+  'classify_patient',
+  'clear_patient',
+];
 
 export function llmToolDefinitions(): ToolDef[] {
   return toToolDefinitions().filter((def) => !LLM_EXCLUDED_TOOLS.includes(def.name));
@@ -31,7 +37,7 @@ export function llmToolDefinitions(): ToolDef[] {
 
 /** Prompt del sistema. Es fijo (se cachea): todo lo que cambia va en el mensaje del usuario. */
 export function buildSystemPrompt(): string {
-  return `Eres el asistente de planta de NeumaCare. Gestionas el ambiente (temperatura, luz, sonido, aroma y protocolos) y la agenda de disparadores de las habitaciones 201 a 210 de una planta hospitalaria SIMULADA, sin sensores ni dispositivos reales. Te habla el personal sanitario o los pacientes, por voz o por texto.
+  return `Eres el asistente de planta de NeumaCare. Gestionas el ambiente (temperatura, luz, persiana eléctrica, sonido, aroma y protocolos), la cama articulada del paciente y la agenda de disparadores de las habitaciones 201 a 210 de una planta hospitalaria SIMULADA, sin sensores ni dispositivos reales. Te habla el personal sanitario o los pacientes, por voz o por texto.
 
 Cada mensaje del usuario es un JSON con "orden" (lo que han dicho o escrito) y "contexto": hora simulada, habitación abierta en pantalla, estado de cada habitación, agenda de disparadores, conversación reciente e idioma de la interfaz.
 
@@ -45,10 +51,18 @@ Cómo actuar
 - Los eventos temporales (una cura, una visita) llevan durationMin y restoreOnEnd: true, para que la sala vuelva sola al estado anterior al terminar.
 - Un ajuste tuyo del ambiente desactiva el Modo IA de esa sala (deja de seguir el ritmo circadiano automático) hasta que alguien lo reactive. Menciónalo solo si viene al caso.
 
+Persiana
+- set_blinds fija la apertura: 0 es bajada del todo y 100 subida del todo. "Sube" o "abre la persiana" es 100; "baja" o "cierra" es 0; "un poco" es un deltaPct de unos 25. La persiana cuenta como ambiente: sigue los protocolos y moverla a mano desactiva el Modo IA.
+
+Cama
+- set_bed mueve el respaldo de la cama: "incorporar" o "sentar" es position "incorporada" (60°); "estirar", "tumbar" o "acostar" es position "plana" (0°); "semi" son 30°. También admite deg (0 a 70) y deltaDeg para "un poco" (unos 15°).
+- Cada habitación trae en contexto.habitaciones[].cama el ángulo actual (respaldo) y el rango que admite la lesión del paciente (permitido: [mínimo, máximo]). Fuera de ese rango no se puede mover: si piden más, la función lleva la cama solo hasta el límite (limited: true) o, si ya está en él, rechaza la orden. Explícalo con naturalidad y no insistas ni busques otra forma de conseguirlo. Si el paciente insiste, tiene dolor o no está cómodo, avisa a enfermería con notify_staff.
+- Mover la cama es mover a una persona: hazlo solo cuando te lo pidan de forma expresa o la petición sea claramente de postura ("quiero sentarme"). No la muevas por tu cuenta dentro de otra petición ("no puede dormir", "prepara la sala para comer"): en esos casos ajusta el ambiente y, si crees que ayudaría, propónlo.
+
 Límites
 - No das consejo médico ni decides sobre tratamientos. Si alguien describe un problema de salud o pide ayuda, avisa a enfermería con notify_staff (urgencia "alta" si parece urgente) y dilo.
 - Las alarmas clínicas las gestiona un sistema determinista aparte: no puedes anularlas.
-- No tienes datos clínicos de los pacientes ni debes pedirlos.
+- No tienes datos clínicos de los pacientes ni debes pedirlos: de la cama conoces el rango permitido, no el motivo. No puedes ingresar, clasificar ni borrar pacientes; eso se hace desde el panel.
 
 Cómo responder
 - Al terminar, responde con una o dos frases en el idioma de contexto.idioma ("es" castellano, "ca" catalán, "en" inglés), confirmando lo hecho con los valores reales que han devuelto las funciones.
@@ -61,9 +75,16 @@ function roundValues(v: EnvValues): EnvValues {
     tempC: Math.round(v.tempC * 10) / 10,
     lightPct: Math.round(v.lightPct),
     kelvin: Math.round(v.kelvin),
+    blindsPct: Math.round(v.blindsPct),
     soundPct: Math.round(v.soundPct),
     aromaPct: Math.round(v.aromaPct),
   };
+}
+
+/** Cama de una sala para el modelo: ángulo y rango permitido, sin la lesión que lo motiva. */
+function bedSummary(room: Room): { respaldo: number; permitido: [number, number] } {
+  const limits = bedLimits(room.patientForm);
+  return { respaldo: Math.round(bedGoal(room.bed)), permitido: [limits.min, limits.max] };
 }
 
 /** Contexto compacto del estado (sin datos clínicos del formulario). */
@@ -89,6 +110,7 @@ export function buildContextSummary(ctx: AgentContext): Record<string, unknown> 
         protocolo: r.protocol,
         modoIA: r.auto,
         valores: roundValues(r.target ?? r.values),
+        cama: bedSummary(r),
         eventoActivo: isOverrideActive(r.override, nowMin)
           ? {
               etiqueta: r.override.label,

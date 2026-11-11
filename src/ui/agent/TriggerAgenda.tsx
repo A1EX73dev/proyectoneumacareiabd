@@ -96,7 +96,7 @@ export function TriggerAgenda() {
         : fireRoom;
 
   return (
-    <Card title={t('agenda.title')} titleId="agenda-title">
+    <Card title={t('agenda.title')} titleId="agenda-title" icon="calendar">
       <div className="space-y-4">
         <div className="max-h-[22rem] overflow-auto rounded-lg border border-slate-200">
           <table className="w-full min-w-[26rem] text-left text-xs">

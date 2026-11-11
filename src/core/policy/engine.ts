@@ -288,8 +288,12 @@ function planManual(ctx: PolicyContext, b: CallBuilder): void {
     );
     return;
   }
-  if (action === 'reevaluate' && room.occupied && room.auto) {
-    planCircadian(state, room, b, { skipIfSame: false, reason: t('reason.reevaluate') });
+  // Al reactivar el Modo IA o ingresar un paciente, la sala recibe el protocolo de la hora.
+  if ((action === 'reevaluate' || action === 'admitted') && room.occupied && room.auto) {
+    planCircadian(state, room, b, {
+      skipIfSame: false,
+      reason: t(action === 'admitted' ? 'reason.admission' : 'reason.reevaluate'),
+    });
   }
 }
 

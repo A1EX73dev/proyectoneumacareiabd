@@ -3,6 +3,7 @@ import { setLang, t, type Lang } from '../i18n';
 import { classifier, SAMPLE_FORMS } from './classify';
 import { daylight } from './color';
 import { newId } from './ids';
+import { BED_DEFAULT_DEG, bedLimits, clampBedDeg, stepBed } from './policy/bed';
 import { patientFlags, phaseProtocol, resolveProtocol } from './policy/protocols';
 import { defaultTriggers } from './policy/triggerProfiles';
 import { hourOf, phaseAt } from './time';
@@ -87,8 +88,9 @@ export function baseNoiseDb(values: EnvValues): number {
   return 28 + (values.soundscape === 'silencio' ? 0 : values.soundPct * 0.35);
 }
 
+/** Luz artificial más la natural que deja pasar la persiana. */
 export function luxFor(values: EnvValues, nowMin: number): number {
-  return values.lightPct * 3 + daylight(hourOf(nowMin)) * 150;
+  return values.lightPct * 3 + daylight(hourOf(nowMin)) * 150 * (values.blindsPct / 100);
 }
 
 /* ------------------------------------------------------------------ */
@@ -111,6 +113,7 @@ export function makeRoom(id: string, occupied: boolean, nowMin: number): Room {
     override: null,
     values,
     target: null,
+    bed: { backrestDeg: BED_DEFAULT_DEG, targetDeg: null },
     readings: {
       tempC: values.tempC - 0.4,
       noiseDb: baseNoiseDb(values),
@@ -147,7 +150,13 @@ export function createInitialState(opts: InitialStateOptions = {}): AppState {
         classification,
         protocol,
         values,
-        readings: { ...room.readings, tempC: values.tempC - 0.4, noiseDb: baseNoiseDb(values) },
+        // La cama arranca ya dentro de lo que permite la lesión del paciente.
+        bed: { backrestDeg: clampBedDeg(BED_DEFAULT_DEG, bedLimits(form)), targetDeg: null },
+        readings: {
+          tempC: values.tempC - 0.4,
+          noiseDb: baseNoiseDb(values),
+          lux: luxFor(values, nowMin),
+        },
       };
     }
     rooms[id] = room;
@@ -245,6 +254,7 @@ const EPS: Record<NumericEnvKey, number> = {
   tempC: 0.05,
   lightPct: 0.5,
   kelvin: 15,
+  blindsPct: 0.5,
   soundPct: 0.5,
   aromaPct: 0.5,
 };
@@ -254,13 +264,18 @@ export function rampSteps(speed: SimSpeed): number {
   return speed <= 1 ? 1 : Math.min(30, Math.ceil(speed / 4));
 }
 
+/** Fracción de la distancia restante que se recorre en `steps` pasos de rampa. */
+export function rampFraction(steps: number): number {
+  return 1 - Math.pow(1 - RAMP_FACTOR, Math.max(1, steps));
+}
+
 /** Avanza `steps` pasos de rampa (15 % de la distancia restante por paso). Nunca salta. */
 export function rampValues(
   values: EnvValues,
   target: EnvValues,
   steps: number,
 ): { values: EnvValues; done: boolean } {
-  const k = 1 - Math.pow(1 - RAMP_FACTOR, Math.max(1, steps));
+  const k = rampFraction(steps);
   const next: EnvValues = {
     ...values,
     soundscape: target.soundscape,
@@ -329,7 +344,7 @@ export function updateReadings(room: Room, simMin: number, nowMin: number): Room
   };
 }
 
-/** Un tick de simulación para todas las habitaciones: fin de eventos, rampas y lecturas. */
+/** Un tick de simulación para todas las habitaciones: fin de eventos, rampas, cama y lecturas. */
 export function tickRooms(
   state: AppState,
   nowMin: number,
@@ -345,6 +360,8 @@ export function tickRooms(
       const { values, done } = rampValues(r.values, r.target, steps);
       r = { ...r, values, target: done ? null : r.target };
     }
+    // El respaldo de la cama se mueve con la misma rampa que el resto de actuadores.
+    if (r.bed.targetDeg !== null) r = { ...r, bed: stepBed(r.bed, rampFraction(steps)) };
     rooms[id] = updateReadings(r, simMin, nowMin);
   }
   return { ...state, rooms };
@@ -383,13 +400,19 @@ export function simulateNoiseSpike(state: AppState, roomId: string, db: number):
   }));
 }
 
-/** Privacidad: al borrar los datos del paciente se eliminan también de las llamadas registradas. */
+/** Funciones cuyos argumentos llevan el formulario del paciente. */
+export const PATIENT_DATA_TOOLS: readonly string[] = ['admit_patient', 'classify_patient'];
+
+/**
+ * Privacidad: al borrar los datos de un paciente (o sustituirlo por otro) se eliminan también
+ * de las llamadas registradas.
+ */
 export function redactPatientData(state: AppState, roomId: string): AppState {
   const calls = state.agent.calls.map((rec) =>
-    rec.call.name === 'classify_patient' && rec.call.args.room === roomId
+    PATIENT_DATA_TOOLS.includes(rec.call.name) && rec.call.args.room === roomId
       ? {
           ...rec,
-          call: { ...rec.call, args: { room: roomId, form: t('privacy.redacted') } },
+          call: { ...rec.call, args: { ...rec.call.args, form: t('privacy.redacted') } },
           result: rec.result.ok ? { ok: true as const, result: t('privacy.redacted') } : rec.result,
         }
       : rec,

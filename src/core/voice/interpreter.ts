@@ -26,6 +26,10 @@ export interface Interpretation {
 
 type SegmentResult = { calls: PlannedCall[] } | { clarify: string };
 
+/** Terminaciones de una orden: «incorpora», «incorpore», «incorpórame», «incorporarlo»… */
+const IMPERATIVE = '(?:a|e|en|ame|alo|ala)';
+const ORDER = '(?:a|e|en|ar|ame|alo|ala|arme|arlo|arla|arse)';
+
 const RE = {
   room: /\b(20[1-9]|210)\b/,
   roomWord: /\b(habitacion|habitaciones|hab|cuarto)\b/,
@@ -49,6 +53,25 @@ const RE = {
   down: /\b(baja|bajar|bajala|reduce|reducir|disminuye|disminuir|mas baj[oa]|mas flojo|menos)\b/,
   on: /\b(activa|activar|enciende|encender|pon|poner|conecta|conectar)\b/,
   urgent: /\b(urgente|urgencia|ya|rapido|deprisa|emergencia)\b/,
+  little: /\b(un poco|un poquito|algo|ligeramente|un pelin)\b/,
+  blinds: /\b(persianas?|estor(?:es)?|cortinas?)\b/,
+  blindsUp: /\b(sube|subir|subela|abre|abrir|abrela|levanta|levantar|alza|arriba)\b/,
+  blindsDown: /\b(baja|bajar|bajala|cierra|cerrar|cierrala|echa|abajo)\b/,
+  half: /\b(mitad|a medias|medio)\b/,
+  bed: /\b(cama|camilla|cabecero|respaldo)\b/,
+  // Órdenes de postura que no nombran la cama: «incorpórame», «quiero tumbarme»… Solo formas
+  // verbales inequívocas: «se siente mal» o «está acostumbrado» no deben mover la cama.
+  posture: new RegExp(
+    `\\b(incorpor${ORDER}|tumb${ORDER}|acostar(?:me|lo|la|se)?|acuest${IMPERATIVE}|` +
+      `recostar(?:me|lo|la|se)?|recuest${IMPERATIVE}|sentar(?:me|lo|la)|sienta(?:me|lo|la))\\b`,
+  ),
+  bedUp:
+    /\b(incorpor\w+|sienta\w*|sentar\w*|sentad[oa]|levanta\w*|sube|subir|subela|eleva\w*|alza\w*|arriba)\b/,
+  bedDown:
+    /\b(estira\w*|tumb\w+|acost\w+|acuest\w+|baja|bajar|bajala|reclina\w*|horizontal|plan[oa]|abajo)\b/,
+  bedSemi: /\b(semi\w*|recost\w+|recuest\w+|a medias|intermedi[oa])\b/,
+  otherDevice:
+    /\b(temperatura|calefaccion|climatizacion|aire acondicionado|termostato|luz|luces|iluminacion|lamparas?|sonido|musica|volumen|altavoz|aroma|difusor)\b/,
 };
 
 const TRIGGER_WORDS: [RegExp, TriggerType][] = [
@@ -81,7 +104,7 @@ const AROMA_WORDS: [RegExp, AromaType][] = [
 ];
 
 const COMPOUND_SPLIT =
-  /\s+y\s+(?=(?:pon|sube|baja|activa|desactiva|apaga|enciende|abre|avisa|programa|quita)\b)/;
+  /\s+[ye]\s+(?=(?:pon|sube|baja|activa|desactiva|apaga|enciende|abre|cierra|avisa|programa|quita|incorpora|incorporame|estira|tumba|tumbame|levanta)\b)/;
 
 function pick<T>(text: string, table: [RegExp, T][]): T | null {
   for (const [re, value] of table) if (re.test(text)) return value;
@@ -90,6 +113,11 @@ function pick<T>(text: string, table: [RegExp, T][]): T | null {
 
 function findRoom(text: string): string | null {
   return RE.room.exec(text)?.[1] ?? null;
+}
+
+/** Posición de la primera coincidencia (Infinity si no aparece). */
+function firstIndex(re: RegExp, text: string): number {
+  return re.exec(text)?.index ?? Infinity;
 }
 
 function firstNumber(text: string): number | null {
@@ -179,6 +207,41 @@ function interpretTemperature(s: string, room: string | null): SegmentResult {
   });
 }
 
+/** Persiana: un número es la apertura; sin número, «sube/abre» = del todo y «baja/cierra» = bajada. */
+function interpretBlinds(s: string, room: string | null): SegmentResult {
+  return needRoom(room, (r) => {
+    const args: Record<string, unknown> = { room: r };
+    const n = firstNumber(s);
+    const up = RE.blindsUp.test(s);
+    const down = RE.blindsDown.test(s);
+    if (n !== null) args.pct = n;
+    else if (RE.half.test(s)) args.pct = 50;
+    else if (RE.little.test(s) && (up || down)) args.deltaPct = up ? 25 : -25;
+    else if (up) args.pct = 100;
+    else if (down) args.pct = 0;
+    return Object.keys(args).length > 1 ? [{ name: 'set_blinds', args }] : [];
+  });
+}
+
+/**
+ * Cama: un número son los grados del respaldo; sin número, «incorpora» = incorporada y
+ * «estira/tumba» = plana. Si la lesión del paciente lo impide lo decide `set_bed`, no el intérprete.
+ */
+function interpretBed(s: string, room: string | null): SegmentResult {
+  return needRoom(room, (r) => {
+    const args: Record<string, unknown> = { room: r };
+    const n = firstNumber(s);
+    const up = RE.bedUp.test(s);
+    const down = RE.bedDown.test(s);
+    if (n !== null) args.deg = n;
+    else if (RE.little.test(s) && (up || down)) args.deltaDeg = up ? 15 : -15;
+    else if (RE.bedSemi.test(s)) args.position = 'semi';
+    else if (up) args.position = 'incorporada';
+    else if (down) args.position = 'plana';
+    return Object.keys(args).length > 1 ? [{ name: 'set_bed', args }] : [];
+  });
+}
+
 function interpretSegment(
   raw: string,
   defaultRoom: string | null,
@@ -189,7 +252,8 @@ function interpretSegment(
   // Para leer valores numéricos se quita el número de habitación del texto.
   const s = ownRoom ? raw.replace(RE.room, ' ') : raw;
 
-  if (RE.open.test(raw) && (ownRoom || RE.roomWord.test(raw))) {
+  // «abre la persiana de la 205» no es abrir la habitación.
+  if (RE.open.test(raw) && (ownRoom || RE.roomWord.test(raw)) && !RE.blinds.test(raw)) {
     return needRoom(ownRoom, (r) => [{ name: 'open_room', args: { room: r } }]);
   }
   if (RE.state.test(raw)) {
@@ -237,6 +301,18 @@ function interpretSegment(
   const protocol = RE.protocol.exec(raw)?.[1] as ProtocolId | undefined;
   if (protocol) {
     return needRoom(room, (r) => [{ name: 'apply_protocol', args: { room: r, protocol } }]);
+  }
+  // Persiana y cama. «Sube» y «baja» valen para varios dispositivos, así que manda el que se
+  // nombra primero («sube la temperatura, estoy en la cama» no mueve la cama). Si la frase las
+  // nombra pero no pide moverlas («tengo frío en la cama»), se sigue con el resto de reglas.
+  const otherDevice = firstIndex(RE.otherDevice, raw);
+  if (firstIndex(RE.blinds, raw) < otherDevice) {
+    const blinds = interpretBlinds(s, room);
+    if ('clarify' in blinds || blinds.calls.length > 0) return blinds;
+  }
+  if (RE.posture.test(raw) || firstIndex(RE.bed, raw) < otherDevice) {
+    const bed = interpretBed(s, room);
+    if ('clarify' in bed || bed.calls.length > 0) return bed;
   }
   if (RE.aroma.test(raw)) {
     return needRoom(room, (r) => {

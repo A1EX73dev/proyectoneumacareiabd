@@ -195,9 +195,8 @@ export function FloorPlan() {
   const [hovered, setHovered] = useState<string | null>(null);
 
   return (
-    <Card title={t('map.title')} titleId="map-title">
-      <p className="mb-2 text-sm text-slate-600">{t('map.hint')}</p>
-      <div className="overflow-x-auto">
+    <Card title={t('map.title')} titleId="map-title" icon="plan" subtitle={t('map.hint')}>
+      <div className="overflow-x-auto rounded-xl ring-1 ring-inset ring-slate-200">
         <svg
           viewBox="0 0 1100 640"
           className="h-auto w-full min-w-[640px]"
@@ -205,9 +204,21 @@ export function FloorPlan() {
           aria-labelledby="map-title"
         >
           <rect x={0} y={0} width={1100} height={640} fill="#f8fafc" />
+          <pattern id="floor-grid" width="20" height="20" patternUnits="userSpaceOnUse">
+            <path d="M20 0H0V20" fill="none" stroke="#e2e8f0" strokeWidth={0.6} />
+          </pattern>
+          <rect x={0} y={0} width={1100} height={640} fill="url(#floor-grid)" />
           {/* Pasillo */}
-          <rect x={20} y={270} width={1060} height={100} fill="#e2e8f0" stroke="#94a3b8" />
-          <text x={560} y={326} textAnchor="middle" fontSize={16} fill="#334155" letterSpacing={4}>
+          <rect x={20} y={270} width={1060} height={100} fill="#eef2f6" stroke="#cbd5e1" />
+          <text
+            x={560}
+            y={326}
+            textAnchor="middle"
+            fontSize={14}
+            fontWeight={600}
+            fill="#64748b"
+            letterSpacing={6}
+          >
             {t('map.corridor').toUpperCase()}
           </text>
           {/* Escaleras */}
@@ -338,14 +349,14 @@ export function FloorPlan() {
         </svg>
       </div>
       <ul
-        className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700"
+        className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600"
         aria-label={t('map.legend')}
       >
         {(Object.keys(PROTOCOL_COLORS) as (keyof typeof PROTOCOL_COLORS)[]).map((p) => (
           <li key={p} className="flex items-center gap-1.5">
             <span
               aria-hidden="true"
-              className="inline-block h-3 w-3 rounded-sm ring-1 ring-slate-400"
+              className="inline-block h-2.5 w-2.5 rounded-full"
               style={{ backgroundColor: PROTOCOL_COLORS[p] }}
             />
             {tk('protocol', p)}

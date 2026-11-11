@@ -5,6 +5,7 @@ import { isOverrideActive } from '../policy/priorities';
 import { resolveProtocol } from '../policy/protocols';
 import { patchRoom, setRoomTarget } from '../state';
 import { PRIORITY, type Room } from '../types';
+import { classificationSummary, withBedWithinLimits } from './patient';
 import { patientFormSchema, roomIdSchema } from './schemas';
 import { defineTool, fail, ok } from './types';
 
@@ -43,19 +44,10 @@ export const classifyPatient = defineTool({
         } else {
           next = setRoomTarget(next, r.target ?? r.values, false);
         }
-        return next;
+        // Si la lesión indicada no admite la posición actual de la cama, se lleva al límite.
+        return withBedWithinLimits(next, ctx);
       }),
     );
-    return ok({
-      category: result.category,
-      confidence: result.confidence,
-      rationale: result.rationale,
-      params: {
-        aromaBlocked: result.params.aromaBlocked,
-        aromaAllowed: result.params.aromaAllowed,
-        preferredSoundscape: result.params.preferredSoundscape,
-        circadian: result.params.circadian,
-      },
-    });
+    return ok(classificationSummary(result));
   },
 });

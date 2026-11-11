@@ -2,6 +2,8 @@ import { z } from 'zod';
 import {
   ADMISSION_REASONS,
   AROMA_TYPES,
+  BED_POSITIONS,
+  BED_RESTRICTIONS,
   MOBILITY_LEVELS,
   PROTOCOL_IDS,
   RISK_LEVELS,
@@ -24,6 +26,11 @@ export const roomOrAllSchema = z
 export const protocolSchema = z.enum(PROTOCOL_IDS).describe('Protocolo ambiental');
 export const soundscapeSchema = z.enum(SOUNDSCAPES).describe('Paisaje sonoro');
 export const aromaTypeSchema = z.enum(AROMA_TYPES).describe('Tipo de aroma');
+export const bedPositionSchema = z
+  .enum(BED_POSITIONS)
+  .describe(
+    'Posición del respaldo: "plana" (estirada, 0°), "semi" (semiincorporada, 30°) o "incorporada" (sentado, 60°)',
+  );
 export const triggerTypeSchema = z.enum(TRIGGER_TYPES).describe('Tipo de disparador horario');
 export const urgencySchema = z.enum(URGENCY_LEVELS);
 export const timeSchema = z
@@ -45,6 +52,7 @@ export const restoreSchema = z
 export const DURATION_RANGE: Range = [1, 720];
 
 export const patientFormSchema = z.object({
+  name: z.string().max(60),
   age: z.number().int().min(0).max(120),
   admissionReason: z.enum(ADMISSION_REASONS),
   anxiety: z.number().min(0).max(10),
@@ -53,6 +61,7 @@ export const patientFormSchema = z.object({
   lightSensitivity: z.number().min(0).max(10),
   mobility: z.enum(MOBILITY_LEVELS),
   deliriumRisk: z.enum(RISK_LEVELS),
+  bedRestriction: z.enum(BED_RESTRICTIONS),
   aromaAllergy: z.boolean(),
   aromaAllergyText: z.string().max(200),
   preferences: z.string().max(500),

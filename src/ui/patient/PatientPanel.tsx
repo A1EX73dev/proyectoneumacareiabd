@@ -1,377 +1,310 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
-import { EMPTY_FORM, FEATURES, SAMPLE_FORMS } from '../../core/classify';
-import {
-  ADMISSION_REASONS,
-  CATEGORY_IDS,
-  MOBILITY_LEVELS,
-  RISK_LEVELS,
-  type PatientForm,
-} from '../../core/types';
+import { useState, type FormEvent } from 'react';
+import { EMPTY_FORM, FEATURES } from '../../core/classify';
+import { bedLimits, describeBedLimits } from '../../core/policy/bed';
+import { CATEGORY_IDS, type ClassificationResult, type PatientForm } from '../../core/types';
 import { manual } from '../actions';
-import { CATEGORY_BADGE } from '../format';
+import { CategoryBadge } from '../common/Badges';
+import { ConfirmDialog } from '../common/ConfirmDialog';
+import { Icon } from '../common/Icon';
 import { useApp, useT } from '../hooks';
+import { openAdmitDialog, pushToast } from '../overlay';
+import { PatientFields, PatientSamples } from './PatientFields';
 
-const inputClass =
-  'w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600';
-
-function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
+function EmptyRoom({ roomId }: { roomId: string }) {
+  const { t } = useT();
   return (
-    <div className="space-y-1">
-      <label htmlFor={id} className="text-sm font-medium text-slate-800">
-        {label}
-      </label>
-      {children}
+    <div className="flex flex-col items-center rounded-xl border border-dashed border-slate-300 bg-slate-50 px-6 py-10 text-center">
+      <span className="flex h-12 w-12 items-center justify-center rounded-full bg-white text-slate-500 ring-1 ring-slate-200">
+        <Icon name="bed" className="h-6 w-6" />
+      </span>
+      <h3 className="mt-3 text-base font-semibold text-slate-900">{t('patient.emptyTitle')}</h3>
+      <p className="mt-1 max-w-xs text-sm text-slate-600">{t('patient.emptyBody')}</p>
+      <button
+        type="button"
+        onClick={() => openAdmitDialog(roomId)}
+        className="btn btn-primary mt-5"
+      >
+        <Icon name="userPlus" />
+        {t('admit.open')}
+      </button>
     </div>
   );
 }
 
-function Scale({
-  id,
-  label,
-  value,
-  onChange,
+function PatientSummary({
+  form,
+  result,
 }: {
-  id: string;
-  label: string;
-  value: number;
-  onChange: (v: number) => void;
+  form: PatientForm;
+  result: ClassificationResult | null;
 }) {
+  const { t, tk } = useT();
+  const limits = bedLimits(form);
+  const name = form.name.trim();
   return (
-    <div className="space-y-1">
-      <div className="flex justify-between">
-        <label htmlFor={id} className="text-sm font-medium text-slate-800">
-          {label}
-        </label>
-        <output htmlFor={id} className="font-mono text-sm tabular-nums">
-          {value}/10
-        </output>
+    <div className="rounded-xl bg-gradient-to-br from-teal-50 to-white p-4 ring-1 ring-inset ring-teal-100">
+      <div className="flex items-start gap-3">
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-teal-700 text-white">
+          <Icon name="user" className="h-5 w-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p
+            className={`truncate text-base font-semibold ${name ? 'text-slate-900' : 'text-slate-500'}`}
+          >
+            {name || t('patient.anonymous')}
+          </p>
+          <p className="text-sm text-slate-600">
+            {t('patient.years', { age: form.age })} · {tk('admission', form.admissionReason)} ·{' '}
+            {tk('mobility', form.mobility)}
+          </p>
+          {result && (
+            <div className="mt-2">
+              <CategoryBadge category={result.category} />
+            </div>
+          )}
+        </div>
       </div>
-      <input
-        id={id}
-        type="range"
-        min={0}
-        max={10}
-        step={1}
-        value={value}
-        aria-valuetext={`${value} / 10`}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="w-full accent-teal-600"
-      />
+      <ul className="mt-3 flex flex-wrap gap-1.5">
+        <li className="chip">
+          <Icon name={limits.restricted ? 'lock' : 'bed'} className="h-3.5 w-3.5 text-slate-500" />
+          {limits.restricted
+            ? `${tk('bedRestriction', form.bedRestriction)} · ${describeBedLimits(limits)}`
+            : tk('bedRestriction', 'ninguna')}
+        </li>
+        {form.aromaAllergy && (
+          <li className="chip bg-red-50 text-red-900 ring-red-200">
+            <Icon name="alert" className="h-3.5 w-3.5" />
+            {t('patient.allergy')}
+            {form.aromaAllergyText.trim() && `: ${form.aromaAllergyText.trim()}`}
+          </li>
+        )}
+        {form.deliriumRisk !== 'bajo' && (
+          <li className="chip">
+            {t('patient.delirium')}: {tk('risk', form.deliriumRisk)}
+          </li>
+        )}
+      </ul>
     </div>
   );
 }
 
-/** Formulario de clasificación. Los datos solo viven en memoria y se pueden borrar. */
-export function PatientPanel({ roomId }: { roomId: string }) {
+function ClassificationView({ result }: { result: ClassificationResult }) {
   const { t, tk } = useT();
+  const max = Math.max(...CATEGORY_IDS.map((k) => result.scores[k]), 1);
+  return (
+    <section aria-labelledby="pf-result" className="space-y-3" aria-live="polite">
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h3 id="pf-result" className="eyebrow">
+          {t('patient.result')}
+        </h3>
+        <span className="text-xs text-slate-600">
+          {t('patient.confidence', { pct: Math.round(result.confidence * 100) })}
+        </span>
+      </div>
+      <p className="text-sm text-slate-700">{tk('categoryDesc', result.category)}</p>
+      <div className="space-y-1.5">
+        {CATEGORY_IDS.map((c) => (
+          <div key={c} className="flex items-center gap-2 text-xs">
+            <span className="w-4 font-semibold text-slate-700">{c}</span>
+            <div
+              className="h-2 flex-1 overflow-hidden rounded-full bg-slate-100"
+              aria-hidden="true"
+            >
+              <div
+                className={`h-2 rounded-full ${c === result.category ? 'bg-teal-600' : 'bg-slate-300'}`}
+                style={{ width: `${(result.scores[c] / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-10 text-right tabular-nums text-slate-700">
+              {result.scores[c].toFixed(2)}
+            </span>
+          </div>
+        ))}
+      </div>
+      <ul className="space-y-1 text-sm text-slate-800">
+        {result.rationale.map((r) => (
+          <li key={r} className="flex gap-2">
+            <Icon name="check" className="mt-0.5 h-4 w-4 text-teal-700" />
+            <span>{r}</span>
+          </li>
+        ))}
+      </ul>
+      <details className="group rounded-lg ring-1 ring-inset ring-slate-200">
+        <summary className="cursor-pointer list-none px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+          <span
+            className="inline-block w-4 transition-transform group-open:rotate-90"
+            aria-hidden="true"
+          >
+            ›
+          </span>
+          {t('patient.why')}
+        </summary>
+        <div className="border-t border-slate-200 px-3 py-2">
+          <p className="text-xs text-slate-600">{t('patient.whyHelp')}</p>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[22rem] text-left text-xs">
+              <thead>
+                <tr className="text-slate-600">
+                  <th scope="col" className="py-1 pr-2 font-medium">
+                    {t('patient.feature')}
+                  </th>
+                  <th scope="col" className="py-1 pr-2 font-medium">
+                    {t('patient.category')}
+                  </th>
+                  <th scope="col" className="py-1 pr-2 text-right font-medium">
+                    {t('patient.weight')}
+                  </th>
+                  <th scope="col" className="py-1 pr-2 text-right font-medium">
+                    {t('patient.value')}
+                  </th>
+                  <th scope="col" className="py-1 text-right font-medium">
+                    {t('patient.points')}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {result.contributions.map((c) => (
+                  <tr
+                    key={c.feature}
+                    className={`border-t border-slate-100 ${c.category === result.category ? 'font-semibold text-slate-900' : 'text-slate-700'}`}
+                  >
+                    <td className="py-1 pr-2">{tk('feature', c.feature)}</td>
+                    <td className="py-1 pr-2">{c.category}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{c.weight}</td>
+                    <td className="py-1 pr-2 text-right tabular-nums">{c.value}</td>
+                    <td className="py-1 text-right tabular-nums">{c.points}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </details>
+    </section>
+  );
+}
+
+/** Ficha del paciente de una habitación: resumen, clasificación, edición y borrado. */
+export function PatientPanel({ roomId }: { roomId: string }) {
+  const { t } = useT();
   const room = useApp((s) => s.rooms[roomId]);
   const [form, setForm] = useState<PatientForm>(room?.patientForm ?? EMPTY_FORM);
-  const [status, setStatus] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
-  if (!room) return null;
-  const result = room.classification;
-  const id = (name: string) => `pf-${roomId}-${name}`;
-
-  function set<K extends keyof PatientForm>(key: K, value: PatientForm[K]) {
-    setForm((f) => ({ ...f, [key]: value }));
+  // Si los datos cambian por otra vía (ingreso, sustitución, voz…), el formulario los recoge.
+  const [syncedForm, setSyncedForm] = useState(room?.patientForm ?? null);
+  if (room && room.patientForm !== syncedForm) {
+    setSyncedForm(room.patientForm);
+    setForm(room.patientForm ?? EMPTY_FORM);
   }
+  if (!room) return null;
+  if (!room.occupied) return <EmptyRoom roomId={roomId} />;
+
+  const result = room.classification;
+  // Tras borrar los datos la habitación sigue ocupada: el formulario se abre para rellenarlo.
+  const hasData = room.patientForm !== null;
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
     const r = manual('classify_patient', { room: roomId, form }, t('reason.classifyUi'));
-    setStatus(r.ok ? t('patient.classified') : r.error);
+    if (r.ok) {
+      setError(null);
+      pushToast({ tone: 'success', title: t('patient.classified') });
+    } else {
+      setError(r.error);
+    }
   }
 
   function onClear() {
-    if (!confirmClear) {
-      setConfirmClear(true);
-      return;
-    }
-    const r = manual('clear_patient', { room: roomId }, t('reason.clearUi'));
     setConfirmClear(false);
+    const r = manual('clear_patient', { room: roomId }, t('reason.clearUi'));
     setForm(EMPTY_FORM);
-    setStatus(r.ok ? t('patient.cleared') : r.error);
+    if (r.ok) pushToast({ tone: 'success', title: t('patient.cleared') });
+    else setError(r.error);
   }
+
+  const editor = (
+    <form onSubmit={onSubmit} className="space-y-5" aria-describedby={`pf-${roomId}-help`}>
+      <p id={`pf-${roomId}-help`} className="sr-only">
+        {t('patient.help')}
+      </p>
+      <PatientSamples onPick={(sample) => setForm({ ...sample, name: form.name })} />
+      <PatientFields form={form} onChange={setForm} idPrefix={`pf-${roomId}`} />
+      {error && (
+        <p role="alert" className="note-danger">
+          {error}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 border-t border-slate-200 pt-4">
+        <button type="submit" className="btn btn-primary">
+          <Icon name="check" />
+          {hasData ? t('patient.save') : t('patient.classify')}
+        </button>
+        {hasData && (
+          <button
+            type="button"
+            onClick={() => setConfirmClear(true)}
+            className="btn btn-danger-soft"
+          >
+            <Icon name="trash" />
+            {t('patient.clear')}
+          </button>
+        )}
+      </div>
+    </form>
+  );
 
   return (
     <div className="space-y-5">
-      <p className="rounded-md bg-teal-50 px-3 py-2 text-xs text-teal-900 ring-1 ring-teal-200">
-        {t('patient.privacy')}
-      </p>
-
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <span className="text-slate-700">{t('patient.loadSample')}:</span>
-        {CATEGORY_IDS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setForm(SAMPLE_FORMS[c])}
-            className="rounded-md bg-slate-100 px-2 py-1 font-medium text-slate-800 ring-1 ring-slate-300 hover:bg-slate-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-teal-600"
-          >
-            {t('patient.sample', { c })}
-          </button>
-        ))}
-      </div>
-
-      <form onSubmit={onSubmit} className="space-y-3" aria-describedby={id('help')}>
-        <p id={id('help')} className="sr-only">
-          {t('patient.help')}
-        </p>
-        <div className="grid grid-cols-2 gap-3">
-          <Field id={id('age')} label={t('patient.age')}>
-            <input
-              id={id('age')}
-              type="number"
-              min={0}
-              max={120}
-              value={form.age}
-              onChange={(e) => set('age', Math.max(0, Math.min(120, Number(e.target.value) || 0)))}
-              className={inputClass}
-            />
-          </Field>
-          <Field id={id('reason')} label={t('patient.reason')}>
-            <select
-              id={id('reason')}
-              value={form.admissionReason}
-              onChange={(e) =>
-                set('admissionReason', e.target.value as PatientForm['admissionReason'])
-              }
-              className={inputClass}
-            >
-              {ADMISSION_REASONS.map((r) => (
-                <option key={r} value={r}>
-                  {tk('admission', r)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field id={id('mobility')} label={t('patient.mobility')}>
-            <select
-              id={id('mobility')}
-              value={form.mobility}
-              onChange={(e) => set('mobility', e.target.value as PatientForm['mobility'])}
-              className={inputClass}
-            >
-              {MOBILITY_LEVELS.map((m) => (
-                <option key={m} value={m}>
-                  {tk('mobility', m)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field id={id('delirium')} label={t('patient.delirium')}>
-            <select
-              id={id('delirium')}
-              value={form.deliriumRisk}
-              onChange={(e) => set('deliriumRisk', e.target.value as PatientForm['deliriumRisk'])}
-              className={inputClass}
-            >
-              {RISK_LEVELS.map((r) => (
-                <option key={r} value={r}>
-                  {tk('risk', r)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-
-        <Scale
-          id={id('anxiety')}
-          label={t('patient.anxiety')}
-          value={form.anxiety}
-          onChange={(v) => set('anxiety', v)}
-        />
-        <Scale
-          id={id('sleep')}
-          label={t('patient.sleep')}
-          value={form.sleepQuality}
-          onChange={(v) => set('sleepQuality', v)}
-        />
-        <Scale
-          id={id('noise')}
-          label={t('patient.noiseSens')}
-          value={form.noiseSensitivity}
-          onChange={(v) => set('noiseSensitivity', v)}
-        />
-        <Scale
-          id={id('light')}
-          label={t('patient.lightSens')}
-          value={form.lightSensitivity}
-          onChange={(v) => set('lightSensitivity', v)}
-        />
-
-        <div className="space-y-2 rounded-lg p-3 ring-1 ring-slate-200">
-          <div className="flex items-center gap-2">
-            <input
-              id={id('allergy')}
-              type="checkbox"
-              checked={form.aromaAllergy}
-              onChange={(e) => set('aromaAllergy', e.target.checked)}
-              className="h-4 w-4 accent-teal-600"
-            />
-            <label htmlFor={id('allergy')} className="text-sm font-medium text-slate-800">
-              {t('patient.allergy')}
-            </label>
-          </div>
-          {form.aromaAllergy && (
-            <Field id={id('allergyText')} label={t('patient.allergyText')}>
-              <input
-                id={id('allergyText')}
-                type="text"
-                maxLength={200}
-                value={form.aromaAllergyText}
-                onChange={(e) => set('aromaAllergyText', e.target.value)}
-                className={inputClass}
-              />
-            </Field>
-          )}
-          <div className="flex items-center gap-2">
-            <input
-              id={id('wantsAroma')}
-              type="checkbox"
-              checked={form.wantsAroma}
-              disabled={form.aromaAllergy}
-              onChange={(e) => set('wantsAroma', e.target.checked)}
-              className="h-4 w-4 accent-teal-600 disabled:opacity-50"
-            />
-            <label htmlFor={id('wantsAroma')} className="text-sm font-medium text-slate-800">
-              {t('patient.wantsAroma')}
-            </label>
-          </div>
-        </div>
-
-        <Field id={id('prefs')} label={t('patient.preferences')}>
-          <textarea
-            id={id('prefs')}
-            rows={2}
-            maxLength={500}
-            value={form.preferences}
-            onChange={(e) => set('preferences', e.target.value)}
-            className={inputClass}
-          />
-        </Field>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="submit"
-            className="rounded-md bg-teal-700 px-3 py-1.5 text-sm font-semibold text-white hover:bg-teal-800 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-teal-700"
-          >
-            {t('patient.classify')}
-          </button>
-          <button
-            type="button"
-            onClick={onClear}
-            className={`rounded-md px-3 py-1.5 text-sm font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-700 ${
-              confirmClear ? 'bg-red-700 text-white' : 'bg-red-50 text-red-800 ring-1 ring-red-300'
-            }`}
-          >
-            {confirmClear ? t('patient.clearConfirm') : t('patient.clear')}
-          </button>
-          {confirmClear && (
-            <button
-              type="button"
-              onClick={() => setConfirmClear(false)}
-              className="rounded-md px-3 py-1.5 text-sm text-slate-700 ring-1 ring-slate-300"
-            >
-              {t('common.cancel')}
-            </button>
-          )}
-        </div>
-      </form>
-
-      {status && (
-        <p role="status" className="rounded-md bg-slate-100 px-3 py-2 text-sm text-slate-800">
-          {status}
-        </p>
-      )}
-
+      {room.patientForm && <PatientSummary form={room.patientForm} result={result} />}
       {result ? (
-        <div className="space-y-3 rounded-lg p-3 ring-1 ring-slate-200" aria-live="polite">
-          <div className="flex flex-wrap items-center gap-2">
-            <span
-              className={`rounded-full px-2.5 py-1 text-sm font-bold ring-1 ${CATEGORY_BADGE[result.category]}`}
-            >
-              {tk('category', result.category)}
-            </span>
-            <span className="text-sm text-slate-700">
-              {t('patient.confidence', { pct: Math.round(result.confidence * 100) })}
-            </span>
-          </div>
-          <p className="text-sm text-slate-700">{tk('categoryDesc', result.category)}</p>
-          <ul className="list-disc space-y-0.5 pl-5 text-sm text-slate-800">
-            {result.rationale.map((r) => (
-              <li key={r}>{r}</li>
-            ))}
-          </ul>
-          <div className="space-y-1">
-            {CATEGORY_IDS.map((c) => {
-              const max = Math.max(...CATEGORY_IDS.map((k) => result.scores[k]), 1);
-              return (
-                <div key={c} className="flex items-center gap-2 text-xs">
-                  <span className="w-6 font-semibold">{c}</span>
-                  <div className="h-2.5 flex-1 rounded bg-slate-100" aria-hidden="true">
-                    <div
-                      className={`h-2.5 rounded ${c === result.category ? 'bg-teal-600' : 'bg-slate-400'}`}
-                      style={{ width: `${(result.scores[c] / max) * 100}%` }}
-                    />
-                  </div>
-                  <span className="w-10 text-right font-mono tabular-nums">
-                    {result.scores[c].toFixed(2)}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <details className="text-sm">
-            <summary className="cursor-pointer font-semibold text-slate-900">
-              {t('patient.why')}
-            </summary>
-            <p className="mt-2 text-xs text-slate-600">{t('patient.whyHelp')}</p>
-            <div className="mt-2 overflow-x-auto">
-              <table className="w-full min-w-[22rem] text-left text-xs">
-                <thead>
-                  <tr className="text-slate-600">
-                    <th scope="col" className="py-1 pr-2">
-                      {t('patient.feature')}
-                    </th>
-                    <th scope="col" className="py-1 pr-2">
-                      {t('patient.category')}
-                    </th>
-                    <th scope="col" className="py-1 pr-2 text-right">
-                      {t('patient.weight')}
-                    </th>
-                    <th scope="col" className="py-1 pr-2 text-right">
-                      {t('patient.value')}
-                    </th>
-                    <th scope="col" className="py-1 text-right">
-                      {t('patient.points')}
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {result.contributions.map((c) => (
-                    <tr
-                      key={c.feature}
-                      className={`border-t border-slate-100 ${c.category === result.category ? 'font-semibold' : ''}`}
-                    >
-                      <td className="py-1 pr-2">{tk('feature', c.feature)}</td>
-                      <td className="py-1 pr-2">{c.category}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">{c.weight}</td>
-                      <td className="py-1 pr-2 text-right tabular-nums">{c.value}</td>
-                      <td className="py-1 text-right tabular-nums">{c.points}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </details>
-        </div>
+        <ClassificationView result={result} />
       ) : (
-        <div className="text-sm text-slate-600">
+        <div className="note">
           <p>{t('patient.noResult')}</p>
-          <p className="mt-2 text-xs">{t('patient.weightsSummary', { count: FEATURES.length })}</p>
+          <p className="mt-1 text-xs text-slate-600">
+            {t('patient.weightsSummary', { count: FEATURES.length })}
+          </p>
         </div>
       )}
+
+      {hasData ? (
+        <details className="group rounded-xl ring-1 ring-inset ring-slate-200">
+          <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50 [&::-webkit-details-marker]:hidden">
+            <Icon name="sliders" className="h-4 w-4 text-slate-500" />
+            {t('patient.editTitle')}
+            <span
+              aria-hidden="true"
+              className="ml-auto text-slate-400 transition-transform group-open:rotate-90"
+            >
+              ›
+            </span>
+          </summary>
+          <div className="border-t border-slate-200 p-4">{editor}</div>
+        </details>
+      ) : (
+        <section aria-labelledby={`pf-${roomId}-edit`} className="space-y-3">
+          <h3 id={`pf-${roomId}-edit`} className="eyebrow">
+            {t('patient.editTitle')}
+          </h3>
+          <p className="note-info text-xs">{t('patient.privacy')}</p>
+          {editor}
+        </section>
+      )}
+
+      <ConfirmDialog
+        open={confirmClear}
+        titleId={`pf-${roomId}-clear-title`}
+        title={t('patient.clearTitle', { room: roomId })}
+        confirmLabel={t('patient.clearConfirm')}
+        cancelLabel={t('common.cancel')}
+        closeLabel={t('common.close')}
+        tone="danger"
+        onCancel={() => setConfirmClear(false)}
+        onConfirm={onClear}
+      >
+        <p>{t('patient.clearBody')}</p>
+      </ConfirmDialog>
     </div>
   );
 }

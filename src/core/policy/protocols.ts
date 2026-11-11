@@ -22,6 +22,7 @@ export const DEVICE_RANGES: Ranges = {
   tempC: [18, 28],
   lightPct: [0, 100],
   kelvin: [2200, 6500],
+  blindsPct: [0, 100],
   soundPct: [0, 100],
   aromaPct: [0, 100],
 };
@@ -32,6 +33,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 21,
     lightPct: 2,
     kelvin: 2200,
+    blindsPct: 0,
     soundPct: 5,
     soundscape: 'silencio',
     aromaOn: false,
@@ -42,6 +44,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22.5,
     lightPct: 35,
     kelvin: 2700,
+    blindsPct: 45,
     soundPct: 20,
     soundscape: 'olas',
     aromaOn: true,
@@ -52,6 +55,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22,
     lightPct: 80,
     kelvin: 5000,
+    blindsPct: 100,
     soundPct: 25,
     soundscape: 'pajaros',
     aromaOn: false,
@@ -62,6 +66,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22,
     lightPct: 70,
     kelvin: 3500,
+    blindsPct: 80,
     soundPct: 12,
     soundscape: 'bosque',
     aromaOn: false,
@@ -72,6 +77,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22,
     lightPct: 40,
     kelvin: 3000,
+    blindsPct: 70,
     soundPct: 0,
     soundscape: 'silencio',
     aromaOn: false,
@@ -82,6 +88,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22,
     lightPct: 100,
     kelvin: 4000,
+    blindsPct: 30,
     soundPct: 0,
     soundscape: 'silencio',
     aromaOn: false,
@@ -92,6 +99,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22.5,
     lightPct: 65,
     kelvin: 3000,
+    blindsPct: 80,
     soundPct: 15,
     soundscape: 'bosque',
     aromaOn: false,
@@ -102,6 +110,7 @@ export const PROTOCOL_PRESETS: Record<ProtocolId, EnvValues> = {
     tempC: 22,
     lightPct: 50,
     kelvin: 4000,
+    blindsPct: 70,
     soundPct: 10,
     soundscape: 'silencio',
     aromaOn: false,
@@ -135,6 +144,8 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
         tempC: [21.5, 24],
         lightPct: [0, 60],
         kelvin: [2400, 2700],
+        // Luz natural tamizada: la persiana nunca se sube del todo.
+        blindsPct: [0, 70],
         soundPct: [0, 35],
         aromaPct: [0, 40],
       },
@@ -143,7 +154,7 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
     },
     byProtocol: {
       noche: {
-        ranges: { lightPct: [0, 5], soundPct: [0, 15] },
+        ranges: { lightPct: [0, 5], blindsPct: [0, 10], soundPct: [0, 15] },
         prefer: { soundscape: 'lluvia', soundPct: 8 },
       },
       calma: {
@@ -151,6 +162,7 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
         prefer: {
           lightPct: 30,
           kelvin: 2500,
+          blindsPct: 40,
           soundscape: 'respiracion',
           soundPct: 25,
           aromaOn: true,
@@ -160,15 +172,20 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
       },
       manana: {
         ranges: { lightPct: [30, 65], kelvin: [2700, 3500] },
-        prefer: { lightPct: 55, kelvin: 3000, soundscape: 'bosque', soundPct: 20 },
+        prefer: { lightPct: 55, kelvin: 3000, blindsPct: 60, soundscape: 'bosque', soundPct: 20 },
       },
       comida: {
         ranges: { lightPct: [40, 60], kelvin: [2700, 3000] },
-        prefer: { lightPct: 55, kelvin: 2900, soundscape: 'bosque', soundPct: 12 },
+        prefer: { lightPct: 55, kelvin: 2900, blindsPct: 60, soundscape: 'bosque', soundPct: 12 },
       },
-      visita: { ranges: { lightPct: [35, 60] }, prefer: { lightPct: 50, kelvin: 2700 } },
-      medicacion: { ranges: { lightPct: [25, 40] } },
-      neutro: { prefer: { lightPct: 40, kelvin: 2700, soundscape: 'olas', soundPct: 15 } },
+      visita: {
+        ranges: { lightPct: [35, 60] },
+        prefer: { lightPct: 50, kelvin: 2700, blindsPct: 60 },
+      },
+      medicacion: { ranges: { lightPct: [25, 40] }, prefer: { blindsPct: 50 } },
+      neutro: {
+        prefer: { lightPct: 40, kelvin: 2700, blindsPct: 50, soundscape: 'olas', soundPct: 15 },
+      },
     },
   },
   B: {
@@ -185,17 +202,24 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
       aromaTypes: [],
     },
     byProtocol: {
+      // Ciclo circadiano muy marcado: persiana bajada del todo de noche y subida de día.
       noche: {
-        ranges: { lightPct: [0, 1], kelvin: [2200, 2300], soundPct: [0, 10] },
+        ranges: { lightPct: [0, 1], kelvin: [2200, 2300], blindsPct: [0, 0], soundPct: [0, 10] },
         prefer: { lightPct: 0, kelvin: 2200, soundscape: 'ruido_blanco', soundPct: 6, tempC: 21 },
       },
       manana: {
-        ranges: { lightPct: [75, 100], kelvin: [5000, 6500] },
-        prefer: { lightPct: 90, kelvin: 6000, soundscape: 'lluvia', soundPct: 15 },
+        ranges: { lightPct: [75, 100], kelvin: [5000, 6500], blindsPct: [80, 100] },
+        prefer: { lightPct: 90, kelvin: 6000, blindsPct: 100, soundscape: 'lluvia', soundPct: 15 },
       },
       neutro: {
-        ranges: { lightPct: [60, 100], kelvin: [4500, 6500] },
-        prefer: { lightPct: 75, kelvin: 5000, soundscape: 'silencio', soundPct: 0 },
+        ranges: { lightPct: [60, 100], kelvin: [4500, 6500], blindsPct: [70, 100] },
+        prefer: {
+          lightPct: 75,
+          kelvin: 5000,
+          blindsPct: 100,
+          soundscape: 'silencio',
+          soundPct: 0,
+        },
       },
       calma: {
         ranges: { lightPct: [20, 50], kelvin: [2700, 3500] },
@@ -221,14 +245,15 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
     },
     byProtocol: {
       noche: {
-        ranges: { lightPct: [0, 5], kelvin: [2200, 2700], soundPct: [0, 15] },
+        ranges: { lightPct: [0, 5], kelvin: [2200, 2700], blindsPct: [0, 10], soundPct: [0, 15] },
         prefer: { soundscape: 'olas', soundPct: 6 },
       },
       manana: {
-        ranges: { lightPct: [80, 100], kelvin: [5000, 6500] },
+        ranges: { lightPct: [80, 100], kelvin: [5000, 6500], blindsPct: [80, 100] },
         prefer: {
           lightPct: 95,
           kelvin: 5800,
+          blindsPct: 100,
           soundscape: 'pajaros',
           soundPct: 30,
           aromaOn: true,
@@ -238,7 +263,7 @@ export const CATEGORY_PROFILES: Record<CategoryId, CategoryProfile> = {
       },
       neutro: {
         ranges: { lightPct: [60, 100], kelvin: [4500, 6500] },
-        prefer: { lightPct: 80, kelvin: 5000, soundscape: 'bosque', soundPct: 15 },
+        prefer: { lightPct: 80, kelvin: 5000, blindsPct: 90, soundscape: 'bosque', soundPct: 15 },
       },
       calma: { ranges: { lightPct: [30, 60], kelvin: [3000, 4000] } },
       comida: { ranges: { lightPct: [60, 85], kelvin: [3000, 4000] } },

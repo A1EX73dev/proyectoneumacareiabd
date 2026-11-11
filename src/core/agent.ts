@@ -75,6 +75,16 @@ export function describeOutcome(state: AppState, call: ToolCall, result: ToolRes
         pct: v?.soundPct ?? '—',
         soundscape: tk('soundscape', v?.soundscape ?? 'silencio'),
       });
+    case 'set_blinds':
+      return t('reply.blinds', { room, pct: v?.blindsPct ?? '—' });
+    case 'set_bed': {
+      // El ángulo real lo da la función: puede haberse quedado en el límite que marca la lesión.
+      const out = result.result as { backrestDeg?: number; limited?: boolean };
+      return t(out.limited ? 'reply.bedLimited' : 'reply.bed', {
+        room,
+        deg: out.backrestDeg ?? '—',
+      });
+    }
     case 'set_aroma':
       return a.on ? t('reply.aromaOn', { room }) : t('reply.aromaOff', { room });
     case 'apply_protocol':
@@ -93,6 +103,8 @@ export function describeOutcome(state: AppState, call: ToolCall, result: ToolRes
         light: Math.round(r.values.lightPct),
         kelvin: Math.round(r.values.kelvin),
         sound: Math.round(r.values.soundPct),
+        blinds: Math.round(r.values.blindsPct),
+        bed: Math.round(r.bed.backrestDeg),
         auto: r.auto ? t('common.on') : t('common.off'),
       });
     }

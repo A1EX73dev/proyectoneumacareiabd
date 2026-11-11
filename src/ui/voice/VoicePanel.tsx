@@ -92,7 +92,7 @@ export function VoicePanel() {
   const examples = isLlm ? [...LLM_EXAMPLES, ...EXAMPLES] : EXAMPLES;
 
   return (
-    <Card title={t('voice.title')} titleId="voice-title">
+    <Card title={t('voice.title')} titleId="voice-title" icon="mic">
       <div className="space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <button
