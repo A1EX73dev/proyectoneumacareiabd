@@ -5,6 +5,7 @@ import { sendUtterance } from '../actions';
 import { Card } from '../common/Card';
 import { Switch } from '../common/Switch';
 import { useApp, useT } from '../hooks';
+import { useHospitalMode } from '../route';
 import { useVoice } from './useVoice';
 
 const EXAMPLES = [
@@ -31,7 +32,9 @@ const LLM_EXAMPLES = [
 
 export function VoicePanel() {
   const { t, lang } = useT();
+  const hospital = useHospitalMode();
   const conversation = useApp((s) => s.agent.conversation);
+  const lastReply = [...conversation].reverse().find((c) => c.who === 'agent')?.text ?? null;
   const speech = useApp((s) => s.agent.speech);
   const isLlm = useApp((s) => s.agent.plannerKind === 'llm');
   const thinking = useApp((s) => s.agent.pending > 0);
@@ -182,47 +185,59 @@ export function VoicePanel() {
           </p>
         </details>
 
-        <ol
-          ref={listRef}
-          aria-live="polite"
-          aria-label={t('voice.conversation')}
-          className="max-h-56 space-y-1.5 overflow-auto rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200"
-        >
-          {conversation.length === 0 && !thinking && (
-            <li className="text-sm text-slate-600">{t('voice.empty')}</li>
-          )}
-          {conversation.slice(-14).map((item) => (
-            <li
-              key={item.id}
-              className={`flex ${item.who === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <span
-                className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm ${
-                  item.who === 'user'
-                    ? 'bg-teal-700 text-white'
-                    : 'bg-white text-slate-900 ring-1 ring-slate-200'
-                }`}
+        {hospital && (
+          // Vista hospital: sin historial de conversación, solo la última respuesta.
+          <p
+            role="status"
+            aria-live="polite"
+            className="rounded-lg bg-slate-50 p-2 text-sm text-slate-800 ring-1 ring-slate-200"
+          >
+            {thinking ? t('voice.thinking') : (lastReply ?? t('voice.empty'))}
+          </p>
+        )}
+        {!hospital && (
+          <ol
+            ref={listRef}
+            aria-live="polite"
+            aria-label={t('voice.conversation')}
+            className="max-h-56 space-y-1.5 overflow-auto rounded-lg bg-slate-50 p-2 ring-1 ring-slate-200"
+          >
+            {conversation.length === 0 && !thinking && (
+              <li className="text-sm text-slate-600">{t('voice.empty')}</li>
+            )}
+            {conversation.slice(-14).map((item) => (
+              <li
+                key={item.id}
+                className={`flex ${item.who === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                <span className="sr-only">
-                  {item.who === 'user' ? t('voice.you') : t('voice.agent')}:{' '}
-                </span>
-                {item.text}
                 <span
-                  className={`ml-2 text-[10px] ${item.who === 'user' ? 'text-teal-100' : 'text-slate-500'}`}
+                  className={`max-w-[85%] rounded-lg px-2.5 py-1.5 text-sm ${
+                    item.who === 'user'
+                      ? 'bg-teal-700 text-white'
+                      : 'bg-white text-slate-900 ring-1 ring-slate-200'
+                  }`}
                 >
-                  {formatHHmm(item.atMin)}
+                  <span className="sr-only">
+                    {item.who === 'user' ? t('voice.you') : t('voice.agent')}:{' '}
+                  </span>
+                  {item.text}
+                  <span
+                    className={`ml-2 text-[10px] ${item.who === 'user' ? 'text-teal-100' : 'text-slate-500'}`}
+                  >
+                    {formatHHmm(item.atMin)}
+                  </span>
                 </span>
-              </span>
-            </li>
-          ))}
-          {thinking && (
-            <li className="flex justify-start">
-              <span className="animate-pulse rounded-lg bg-white px-2.5 py-1.5 text-sm italic text-slate-600 ring-1 ring-slate-200">
-                {t('voice.thinking')}
-              </span>
-            </li>
-          )}
-        </ol>
+              </li>
+            ))}
+            {thinking && (
+              <li className="flex justify-start">
+                <span className="animate-pulse rounded-lg bg-white px-2.5 py-1.5 text-sm italic text-slate-600 ring-1 ring-slate-200">
+                  {t('voice.thinking')}
+                </span>
+              </li>
+            )}
+          </ol>
+        )}
       </div>
     </Card>
   );

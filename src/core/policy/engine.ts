@@ -11,7 +11,7 @@ import {
   type ToolSource,
   type TriggerType,
 } from '../types';
-import { interpret } from '../voice';
+import { interpret, isAdmissionUtterance } from '../voice';
 import { phaseProtocol, rulesFor } from './protocols';
 import { TRIGGER_PROFILES } from './triggerProfiles';
 
@@ -304,6 +304,7 @@ function planVoice(ctx: PolicyContext, b: CallBuilder): void {
     selectedRoom: state.ui.selectedRoom,
     triggers: state.triggers,
     occupiedRooms: occupiedRoomIds(state),
+    freeRooms: state.roomIds.filter((id) => !state.rooms[id]?.occupied),
   });
   const reason = t('reason.voice', { text });
   if (result.clarification) {
@@ -373,5 +374,10 @@ export function isDeterministicOnly(event: AgentEvent): boolean {
  * deben ser instantáneos y reproducibles, y no dependen de la red.
  */
 export function isLlmEvent(event: AgentEvent): boolean {
-  return event.kind === 'voice' && !isDeterministicOnly(event);
+  // Ingresar un paciente lo resuelve el motor local: sus datos no salen hacia el modelo.
+  return (
+    event.kind === 'voice' &&
+    !isDeterministicOnly(event) &&
+    !isAdmissionUtterance(str(event.payload.text) ?? '')
+  );
 }

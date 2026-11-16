@@ -1,6 +1,7 @@
 import { t, tk } from '../i18n';
 import { newId } from './ids';
 import { isLlmEvent } from './policy/engine';
+import { isAdmissionUtterance } from './voice';
 import type { ConversationalPlanner, Planner } from './planners/types';
 import { pushCall, pushUserUtterance, type AppState, type AppStore } from './state';
 import { runTool } from './tools';
@@ -41,6 +42,16 @@ export interface AgentOptions {
   mock: Planner;
   llm: ConversationalPlanner;
 }
+
+/** Funciones de administración: no se permiten en órdenes limitadas a una habitación. */
+const SCOPE_FORBIDDEN_TOOLS = [
+  'admit_patient',
+  'classify_patient',
+  'clear_patient',
+  'schedule_trigger',
+  'cancel_trigger',
+  'open_room',
+];
 
 /** Longitud máxima que admite la función `speak`. */
 const SPEAK_MAX_CHARS = 500;
@@ -91,6 +102,14 @@ export function describeOutcome(state: AppState, call: ToolCall, result: ToolRes
       return t('reply.protocol', { room, protocol: tk('protocol', String(a.protocol)) });
     case 'set_auto_mode':
       return a.on ? t('reply.autoOn', { room }) : t('reply.autoOff', { room });
+    case 'admit_patient': {
+      const r = state.rooms[room];
+      return t('reply.admitted', {
+        room,
+        category: r?.category ?? '—',
+        protocol: tk('protocol', r?.protocol ?? 'neutro'),
+      });
+    }
     case 'open_room':
       return t('reply.openRoom', { room });
     case 'get_room_state': {
@@ -180,19 +199,36 @@ export function createAgent({ store, mock, llm }: AgentOptions): Agent {
     });
   }
 
+  /** Ejecuta una llamada respetando el alcance del evento (p. ej. el panel de usuario). */
+  function execute(event: AgentEvent, call: ToolCall): ToolResult {
+    const scope = typeof event.payload.scopeRoom === 'string' ? event.payload.scopeRoom : null;
+    if (scope) {
+      const room = call.args.room;
+      const outside = typeof room === 'string' && room !== scope;
+      if (SCOPE_FORBIDDEN_TOOLS.includes(call.name) || outside) {
+        return { ok: false, error: t('error.outOfScope') };
+      }
+    }
+    return runTool(call, store);
+  }
+
   async function planLocally(event: AgentEvent) {
     const state = store.getState();
     const calls = await mock.plan({ event, state, nowMin: state.clock.nowMin });
-    return { calls, results: calls.map((call) => runTool(call, store)) };
+    return { calls, results: calls.map((call) => execute(event, call)) };
   }
 
   const agent: Agent = {
     async handle(event) {
       store.setState((s) => {
         const next = { ...s, agent: { ...s.agent, lastEvent: event } };
-        return event.kind === 'voice'
-          ? pushUserUtterance(next, String(event.payload.text ?? ''))
-          : next;
+        if (event.kind !== 'voice') return next;
+        const spoken = String(event.payload.text ?? '');
+        // Privacidad: lo dictado al ingresar un paciente no se guarda en la conversación.
+        return pushUserUtterance(
+          next,
+          isAdmissionUtterance(spoken) ? t('voice.admissionRedacted') : spoken,
+        );
       });
 
       let planner: PlannerKind = 'mock';
@@ -207,7 +243,7 @@ export function createAgent({ store, mock, llm }: AgentOptions): Agent {
           const turn = await inOrder(() => {
             const state = store.getState();
             return llm.converse({ event, state, nowMin: state.clock.nowMin }, (call) =>
-              runTool(call, store),
+              execute(event, call),
             );
           });
           planner = 'llm';
@@ -234,6 +270,10 @@ export function createAgent({ store, mock, llm }: AgentOptions): Agent {
       } else {
         ({ calls, results } = await planLocally(event));
       }
+
+      // El modelo puede describir como hecho algo que se bloqueó: manda el motivo real.
+      const blockedByScope = t('error.outOfScope');
+      if (results.some((r) => !r.ok && r.error === blockedByScope)) reply = blockedByScope;
 
       if (event.kind === 'voice') {
         reply ??= composeReply(store.getState(), calls, results);

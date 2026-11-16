@@ -34,6 +34,7 @@ import {
   PROTOCOL_COLORS,
 } from '../format';
 import { useApp, useT } from '../hooks';
+import { useHospitalMode } from '../route';
 import { PatientPanel } from '../patient/PatientPanel';
 import { DecisionLog } from './DecisionLog';
 import { useSoundscapeAudio } from './useSoundscapeAudio';
@@ -179,6 +180,7 @@ function BedControl({ room, report }: { room: Room; report: (r: ToolResult) => v
 }
 
 function Controls({ room }: { room: Room }) {
+  const hospital = useHospitalMode();
   const { t, tk } = useT();
   const nowMin = useApp((s) => s.clock.nowMin);
   const [status, setStatus] = useState<{ ok: boolean; text: string } | null>(null);
@@ -477,9 +479,11 @@ function Controls({ room }: { room: Room }) {
         </div>
       </Section>
 
-      <Section icon="list" title={t('log.recent')}>
-        <DecisionLog entries={room.log.slice(0, 6)} />
-      </Section>
+      {!hospital && (
+        <Section icon="list" title={t('log.recent')}>
+          <DecisionLog entries={room.log.slice(0, 6)} />
+        </Section>
+      )}
     </div>
   );
 }
@@ -487,15 +491,17 @@ function Controls({ room }: { room: Room }) {
 export function RoomMenu({ roomId }: { roomId: string }) {
   const { t, tk } = useT();
   const room = useApp((s) => s.rooms[roomId]);
+  const hospital = useHospitalMode();
+  const tabs = hospital ? TABS.filter((id) => id !== 'log') : TABS;
   const [tab, setTab] = useState<Tab>('controls');
   if (!room) return null;
 
   function onTabKey(e: KeyboardEvent<HTMLButtonElement>) {
     if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
     e.preventDefault();
-    const i = TABS.indexOf(tab);
+    const i = tabs.indexOf(tab);
     const next =
-      TABS[(i + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length] ?? 'controls';
+      tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length] ?? 'controls';
     setTab(next);
     document.getElementById(`tab-${next}`)?.focus();
   }
@@ -512,9 +518,9 @@ export function RoomMenu({ roomId }: { roomId: string }) {
         <div
           role="tablist"
           aria-label={t('menu.tabs')}
-          className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-slate-100 p-1"
+          className={`mt-3 grid ${hospital ? 'grid-cols-2' : 'grid-cols-3'} gap-1 rounded-xl bg-slate-100 p-1`}
         >
-          {TABS.map((id) => (
+          {tabs.map((id) => (
             <button
               key={id}
               id={`tab-${id}`}
@@ -540,7 +546,7 @@ export function RoomMenu({ roomId }: { roomId: string }) {
       <div id={`panel-${tab}`} role="tabpanel" aria-labelledby={`tab-${tab}`} className="p-5">
         {tab === 'controls' && <Controls room={room} />}
         {tab === 'patient' && <PatientPanel key={room.id} roomId={room.id} />}
-        {tab === 'log' && <DecisionLog entries={room.log} />}
+        {tab === 'log' && !hospital && <DecisionLog entries={room.log} />}
       </div>
     </section>
   );

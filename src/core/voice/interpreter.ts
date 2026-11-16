@@ -1,5 +1,6 @@
 import { t } from '../../i18n';
 import type { AromaType, ProtocolId, Soundscape, Trigger, TriggerType } from '../types';
+import { isAdmissionUtterance, parseAdmission } from './admission';
 import { normalize } from './text';
 
 /**
@@ -11,6 +12,8 @@ export interface InterpretContext {
   selectedRoom: string | null;
   triggers: Trigger[];
   occupiedRooms: string[];
+  /** Habitaciones libres (para ingresar un paciente sin decir cuál). */
+  freeRooms?: string[];
 }
 
 export interface PlannedCall {
@@ -334,6 +337,15 @@ function interpretSegment(
 export function interpret(text: string, ctx: InterpretContext): Interpretation {
   const normalized = normalize(text);
   if (!normalized) return { normalized, calls: [], clarification: t('voice.notUnderstood') };
+  if (isAdmissionUtterance(text)) {
+    const { room, form } = parseAdmission(text, ctx.freeRooms ?? []);
+    if (!room) return { normalized, calls: [], clarification: t('voice.admitNoRoom') };
+    return {
+      normalized,
+      calls: [{ name: 'admit_patient', args: { room, form } }],
+      clarification: null,
+    };
+  }
   const defaultRoom = findRoom(normalized) ?? ctx.selectedRoom;
   const calls: PlannedCall[] = [];
   let clarification: string | null = null;

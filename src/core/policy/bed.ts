@@ -1,12 +1,5 @@
 import { t } from '../../i18n';
-import type {
-  BedPosition,
-  BedRestriction,
-  BedState,
-  PatientForm,
-  Range,
-  Room,
-} from '../types';
+import type { BedPosition, BedRestriction, BedState, PatientForm, Range, Room } from '../types';
 
 /**
  * Cama articulada: recorrido del respaldo y límites por lesión.

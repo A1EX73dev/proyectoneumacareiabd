@@ -198,9 +198,7 @@ describe('cama articulada', () => {
     if (!blocked.ok) expect(blocked.error).toMatch(/Bloqueado/);
 
     const later = now + 11;
-    store.setState((s) =>
-      tickRooms({ ...s, clock: { ...s.clock, nowMin: later } }, later, 1, 11),
-    );
+    store.setState((s) => tickRooms({ ...s, clock: { ...s.clock, nowMin: later } }, later, 1, 11));
     expect(runTool(call('set_bed', { room: '201', position: 'plana' }), store).ok).toBe(true);
   });
 

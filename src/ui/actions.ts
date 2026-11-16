@@ -50,8 +50,9 @@ export function setAuto(room: string, on: boolean): ToolResult {
   return result;
 }
 
-export function sendUtterance(text: string): Promise<AgentRun> {
-  return emit('voice', { text });
+/** `scopeRoom`: el panel de usuario limita la orden a la habitación del paciente. */
+export function sendUtterance(text: string, scopeRoom?: string): Promise<AgentRun> {
+  return emit('voice', scopeRoom ? { text, scopeRoom } : { text });
 }
 
 export function openRoomView(room: string): void {

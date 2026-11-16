@@ -6,6 +6,7 @@ import { changeLang, changeSpeed, jumpTo } from '../actions';
 import { Icon } from '../common/Icon';
 import { useApp, useT } from '../hooks';
 import { openAdmitDialog } from '../overlay';
+import { goAdmin, goHospital, goUser, useHospitalMode } from '../route';
 
 function speedLabel(speed: SimSpeed, pause: string): string {
   return speed === 0 ? pause : `${speed}×`;
@@ -30,6 +31,7 @@ export function Header() {
   const nowMin = useApp((s) => s.clock.nowMin);
   const speed = useApp((s) => s.clock.speed);
   const [jump, setJump] = useState('06:00');
+  const hospital = useHospitalMode();
 
   function onJump(e: FormEvent) {
     e.preventDefault();
@@ -52,7 +54,12 @@ export function Header() {
             <h1 className="text-base font-semibold leading-5 tracking-tight text-slate-900">
               {t('app.title')}
             </h1>
-            <p className="text-xs text-slate-500">{t('app.subtitle')}</p>
+            <p className="text-xs text-slate-500">
+              {t('app.subtitle')}
+              {hospital && (
+                <span className="ml-2 font-semibold text-teal-800">· {t('hospital.badge')}</span>
+              )}
+            </p>
           </div>
         </div>
 
@@ -130,6 +137,20 @@ export function Header() {
               ))}
             </select>
           </div>
+
+          <button
+            type="button"
+            onClick={() => (hospital ? goAdmin() : goHospital())}
+            className="btn btn-secondary"
+          >
+            <Icon name="list" />
+            {hospital ? t('hospital.full') : t('hospital.open')}
+          </button>
+
+          <button type="button" onClick={() => goUser()} className="btn btn-secondary">
+            <Icon name="user" />
+            {t('user.openUser')}
+          </button>
 
           <button type="button" onClick={() => openAdmitDialog()} className="btn btn-primary">
             <Icon name="userPlus" />

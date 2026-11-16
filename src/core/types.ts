@@ -129,8 +129,7 @@ export interface EnvValues {
   aromaType: AromaType;
 }
 
-export type NumericEnvKey =
-  'tempC' | 'lightPct' | 'kelvin' | 'blindsPct' | 'soundPct' | 'aromaPct';
+export type NumericEnvKey = 'tempC' | 'lightPct' | 'kelvin' | 'blindsPct' | 'soundPct' | 'aromaPct';
 export const NUMERIC_ENV_KEYS: NumericEnvKey[] = [
   'tempC',
   'lightPct',

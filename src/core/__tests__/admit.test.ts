@@ -14,10 +14,7 @@ function roomOf(store: AppStore, id: string): Room {
 }
 
 const admit = (store: AppStore, room: string, extra: Record<string, unknown> = {}) =>
-  runTool(
-    call('admit_patient', { room, form: SAMPLE_FORMS.C, ...extra }, PRIORITY.MANUAL),
-    store,
-  );
+  runTool(call('admit_patient', { room, form: SAMPLE_FORMS.C, ...extra }, PRIORITY.MANUAL), store);
 
 describe('ingreso de pacientes', () => {
   it('en una habitación libre el paciente entra directamente', () => {

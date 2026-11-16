@@ -139,3 +139,49 @@ describe('intérprete de comandos (texto → ToolCall[])', () => {
     expect(interpret('programa la comida', ctx).clarification).toMatch(/hora/);
   });
 });
+
+describe('ingreso de pacientes por voz', () => {
+  const free: InterpretContext = { ...ctx, freeRooms: ['204', '207'] };
+
+  it('ingresa a un paciente con nombre, edad y datos dictados', () => {
+    const r = interpret('Ingresa a Pedro García en la 207, 60 años, ansiedad alta, cirugía', free);
+    expect(r.clarification).toBeNull();
+    expect(r.calls[0]).toMatchObject({
+      name: 'admit_patient',
+      args: {
+        room: '207',
+        form: { name: 'Pedro García', age: 60, anxiety: 8, admissionReason: 'cirugia' },
+      },
+    });
+  });
+
+  it('sin habitación usa la primera libre', () => {
+    const r = interpret('ingresa un nuevo paciente que se llama Marta', free);
+    expect(r.calls[0]).toMatchObject({ args: { room: '204', form: { name: 'Marta' } } });
+  });
+
+  it('pide aclaración si no hay ninguna libre', () => {
+    const r = interpret('ingresa un paciente nuevo', { ...ctx, freeRooms: [] });
+    expect(r.calls).toHaveLength(0);
+    expect(r.clarification).toBeTruthy();
+  });
+});
+
+describe('ingreso por voz: otras formulaciones', () => {
+  const free: InterpretContext = { ...ctx, freeRooms: ['207'] };
+  it('«añade un paciente en la habitación 207 con dificultades respiratorias»', () => {
+    const r = interpret(
+      'añade un paciente en la habitación 207 con dificultades respiratorias',
+      free,
+    );
+    expect(r.calls[0]).toMatchObject({
+      name: 'admit_patient',
+      args: { room: '207', form: { name: '', admissionReason: 'respiratorio' } },
+    });
+  });
+  it('no confunde órdenes normales con ingresos', () => {
+    expect(interpret('añade medicación a las 14:00 en la 202', free).calls[0]?.name).not.toBe(
+      'admit_patient',
+    );
+  });
+});

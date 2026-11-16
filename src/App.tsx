@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { engine } from './core/runtime';
 import { AgentPanel } from './ui/agent/AgentPanel';
+import { StaffAlerts } from './ui/agent/StaffAlerts';
 import { TriggerAgenda } from './ui/agent/TriggerAgenda';
 import { checkLlmBackend } from './ui/actions';
 import { Toaster } from './ui/common/Toaster';
@@ -13,6 +14,8 @@ import { WardStats } from './ui/map/WardStats';
 import { AdmitDialog } from './ui/patient/AdmitDialog';
 import { RoomMenu } from './ui/room/RoomMenu';
 import { RoomView } from './ui/room/RoomView';
+import { UserPanel } from './ui/patient/UserPanel';
+import { useRoute } from './ui/route';
 import { VoicePanel } from './ui/voice/VoicePanel';
 
 export default function App() {
@@ -20,6 +23,7 @@ export default function App() {
   const view = useApp((s) => s.ui.view);
   const selected = useApp((s) => s.ui.selectedRoom);
   const roomId = view === 'room' ? selected : null;
+  const route = useRoute();
 
   useEffect(() => {
     engine.start();
@@ -29,8 +33,17 @@ export default function App() {
 
   useEffect(() => {
     document.documentElement.lang = lang;
-    document.title = t('app.title');
-  }, [lang, t]);
+    document.title = route.mode === 'user' ? t('user.title') : t('app.title');
+  }, [lang, t, route.mode]);
+
+  if (route.mode === 'user') {
+    return (
+      <>
+        <UserPanel roomId={route.room} />
+        <Toaster />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-100 pb-24 text-slate-900">
@@ -57,7 +70,7 @@ export default function App() {
           )}
           <div className="grid gap-5 xl:grid-cols-2">
             <VoicePanel />
-            <AgentPanel />
+            {route.mode === 'hospital' ? <StaffAlerts /> : <AgentPanel />}
           </div>
           {roomId && <TriggerAgenda />}
         </div>

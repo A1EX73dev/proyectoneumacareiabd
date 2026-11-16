@@ -1,7 +1,13 @@
 import { z } from 'zod';
 import { t } from '../../i18n';
 import { classifier } from '../classify';
-import { BED_DEFAULT_DEG, bedLimits, clampBedDeg, describeBedLimits, moveBedTo } from '../policy/bed';
+import {
+  BED_DEFAULT_DEG,
+  bedLimits,
+  clampBedDeg,
+  describeBedLimits,
+  moveBedTo,
+} from '../policy/bed';
 import { isOverrideActive } from '../policy/priorities';
 import { phaseProtocol, resolveProtocol } from '../policy/protocols';
 import { patchRoom, redactPatientData, setRoomTarget, withLog } from '../state';
